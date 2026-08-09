@@ -6,6 +6,8 @@ import { Roles, CompanyStatus } from '../constants/index';
 import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
 import { Group } from '../models/Group';
 import { Message, IMessage } from '../models/Message';
+import { Attendance } from '../models/Attendance';
+import { AttendanceStatus } from '../constants/index';
 
 const messageWithSender = (message: IMessage, userId: string) => {
   const sender = message.senderId as unknown as { _id?: unknown; name?: string };
@@ -65,7 +67,6 @@ export class CompanyAuthService {
     if (!company) {
       throw { statusCode: 401, message: 'Company not configured.' };
     }
-
     let employee: IEmployee | null = null;
     if (identifier.includes('@')) {
       employee = await Employee.findOne({ companyId: company._id, email: identifier.toLowerCase() });
@@ -93,6 +94,15 @@ export class CompanyAuthService {
 
     employee.refreshTokens.push(refreshToken);
     await employee.save();
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    await Attendance.findOneAndUpdate(
+      { companyId: company._id, employeeId: employee._id, date: { $gte: dayStart, $lt: dayEnd } },
+      { $setOnInsert: { date: dayStart, checkIn: new Date(), status: AttendanceStatus.PRESENT, workHours: 0 } },
+      { upsert: true, new: true },
+    );
 
     return {
       employee: {
@@ -110,6 +120,19 @@ export class CompanyAuthService {
     };
   }
 
+  static async recordLogout(employeeId: string, companyId: string) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const attendance = await Attendance.findOne({ companyId, employeeId, date: { $gte: dayStart, $lt: dayEnd } });
+    if (!attendance || !attendance.checkIn) return;
+    const checkOut = new Date();
+    attendance.checkOut = checkOut;
+    attendance.workHours = Math.max(0, (checkOut.getTime() - attendance.checkIn.getTime()) / 3600000);
+    await attendance.save();
+  }
+
   static async getDashboard(employeeId: string, companyId: string, role: Roles) {
     const company = await Company.findById(companyId);
     const employee = await Employee.findOne({ companyId, _id: employeeId });
@@ -125,7 +148,13 @@ export class CompanyAuthService {
         { privacy: 'private', members: employee._id },
       ],
     });
-    const chatEmployees = isAdmin ? [] : await Employee.find({ companyId, isSuspended: false }).select('_id employeeId name role email');
+    const chatEmployees = isAdmin ? [] : await Promise.all((await Employee.find({ companyId, isSuspended: false, _id: { $ne: employeeId } }).select('_id employeeId name role email')).map(async (chatEmployee) => {
+      const [latestMessage, unreadCount] = await Promise.all([
+        Message.findOne({ companyId, $or: [{ senderId: chatEmployee._id, recipientId: employeeId }, { senderId: employeeId, recipientId: chatEmployee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
+        Message.countDocuments({ companyId, senderId: chatEmployee._id, recipientId: employeeId, readBy: { $ne: employeeId } }),
+      ]);
+      return { ...chatEmployee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
+    }));
     const visibleGroupIds = groups.map((group) => group._id);
     const messages = await Message.find(isAdmin ? { companyId } : {
       companyId,
@@ -136,6 +165,13 @@ export class CompanyAuthService {
       ],
     }).populate('senderId', 'name').sort({ createdAt: -1 }).limit(10);
     const recentMessages = messages.map((message) => messageWithSender(message, employeeId));
+    const groupMetadata = await Promise.all(groups.map(async (group) => {
+      const [latestMessage, unreadCount] = await Promise.all([
+        Message.findOne({ companyId, groupId: group._id }).sort({ createdAt: -1 }).select('createdAt'),
+        Message.countDocuments({ companyId, groupId: group._id, senderId: { $ne: employeeId }, readBy: { $ne: employeeId } }),
+      ]);
+      return { id: group._id.toString(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
+    }));
 
     return {
       company: {
@@ -163,7 +199,7 @@ export class CompanyAuthService {
         activeGroups: groups.length,
         recentMessages: recentMessages.length,
       },
-      groups,
+      groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
       chatEmployees,
       recentMessages,
     };
@@ -216,14 +252,14 @@ export class CompanyAuthService {
     return { id: employee._id, employeeId: employee.employeeId, name: employee.name, email: employee.email, role: employee.role, permissions: employee.permissions };
   }
 
-  static async getEmployees(companyId: string) {
-    const employees = await Employee.find({ companyId }).sort({ createdAt: -1 });
+  static async getEmployees(companyId: string, currentEmployeeId: string) {
+    const employees = await Employee.find({ companyId, _id: { $ne: currentEmployeeId } }).sort({ createdAt: -1 });
     return Promise.all(employees.map(async (employee) => {
-      const latestMessage = await Message.findOne({
-        companyId,
-        $or: [{ senderId: employee._id }, { recipientId: employee._id }],
-      }).sort({ createdAt: -1 });
-      return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null };
+      const [latestMessage, unreadCount] = await Promise.all([
+        Message.findOne({ companyId, $or: [{ senderId: employee._id }, { recipientId: employee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
+        Message.countDocuments({ companyId, senderId: employee._id, recipientId: currentEmployeeId, readBy: { $ne: currentEmployeeId } }),
+      ]);
+      return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
     }));
   }
 
@@ -273,7 +309,7 @@ export class CompanyAuthService {
     await Employee.deleteOne({ _id: employee._id, companyId });
   }
 
-  static async updateEmployee(companyId: string, employeeId: string, data: { name?: string; email?: string; phone?: string; role?: Roles; password?: string; monthlySalesTarget?: number; remoteTarget?: number; permissions?: string[] }) {
+  static async updateEmployee(companyId: string, employeeId: string, data: { name?: string; email?: string; phone?: string; role?: Roles; password?: string; monthlySalesTarget?: number; remoteTarget?: number; permissions?: string[]; salaryAmount?: number; salaryMonth?: string; salaryCredited?: boolean }) {
     const employee = await Employee.findOne({ companyId, _id: employeeId });
     if (!employee) {
       throw { statusCode: 404, message: 'Employee not found.' };
@@ -293,6 +329,9 @@ export class CompanyAuthService {
     if (data.password) employee.passwordHash = await bcrypt.hash(data.password, 10);
     if (data.monthlySalesTarget !== undefined) employee.monthlySalesTarget = data.monthlySalesTarget;
     if (data.remoteTarget !== undefined) employee.remoteTarget = data.remoteTarget;
+    if (data.salaryAmount !== undefined) employee.salaryAmount = data.salaryAmount;
+    if (data.salaryMonth !== undefined) employee.salaryMonth = data.salaryMonth;
+    if (data.salaryCredited !== undefined) employee.salaryCredited = data.salaryCredited;
     if (data.permissions) employee.permissions = data.permissions;
 
     await employee.save();
@@ -306,6 +345,9 @@ export class CompanyAuthService {
       role: employee.role,
       monthlySalesTarget: employee.monthlySalesTarget,
       remoteTarget: employee.remoteTarget,
+      salaryAmount: employee.salaryAmount,
+      salaryMonth: employee.salaryMonth,
+      salaryCredited: employee.salaryCredited,
       isSuspended: employee.isSuspended,
       permissions: employee.permissions,
     };

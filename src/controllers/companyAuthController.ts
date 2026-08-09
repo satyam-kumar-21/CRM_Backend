@@ -46,8 +46,9 @@ export class CompanyAuthController {
     }
   }
 
-  static async logout(_req: Request, res: Response, next: NextFunction) {
+  static async logout(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
+      if (req.user?.id && req.user.companyId) await CompanyAuthService.recordLogout(req.user.id, req.user.companyId);
       res.clearCookie('accessToken');
       res.clearCookie('refreshToken');
       ApiResponse.success(res, 'Logged out successfully', null);
@@ -82,7 +83,7 @@ export class CompanyAuthController {
 
   static async getEmployees(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const employees = await CompanyAuthService.getEmployees(req.user!.companyId!);
+      const employees = await CompanyAuthService.getEmployees(req.user!.companyId!, req.user!.id);
       ApiResponse.success(res, 'Employees fetched successfully', employees);
     } catch (error) {
       next(error);
@@ -212,7 +213,7 @@ export class CompanyAuthController {
       const realtimeMessage = await CompanyAuthService.getRealtimeMessage(req.user!.companyId!, req.user!.id, message._id.toString());
       const audience = await CompanyAuthService.getConversationAudience(req.user!.companyId!, req.params.conversationId);
       emitUserEvent([req.user!.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.conversationId });
-      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.user!.id });
+      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.params.conversationId });
       ApiResponse.success(res, 'Message posted successfully', message, 201);
     } catch (error) { next(error); }
   }

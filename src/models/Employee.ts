@@ -17,6 +17,9 @@ export interface IEmployee extends Document {
   leadsAssigned?: number;
   leadsConverted?: number;
   remoteTarget?: number;
+  salaryAmount: number;
+  salaryMonth?: string;
+  salaryCredited: boolean;
   teamId?: Schema.Types.ObjectId;
   isSuspended: boolean;
   refreshTokens: string[];
@@ -39,6 +42,9 @@ const EmployeeSchema = new Schema<IEmployee>(
     leadsAssigned: { type: Number, default: 0 },
     leadsConverted: { type: Number, default: 0 },
     remoteTarget: { type: Number, default: 0 },
+    salaryAmount: { type: Number, default: 0 },
+    salaryMonth: { type: String, default: '' },
+    salaryCredited: { type: Boolean, default: false },
     teamId: { type: Schema.Types.ObjectId, ref: 'Team' },
     isSuspended: { type: Boolean, default: false },
     refreshTokens: [{ type: String }],

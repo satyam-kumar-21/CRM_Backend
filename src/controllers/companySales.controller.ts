@@ -13,7 +13,7 @@ function validate(req: AuthenticatedRequest, res: Response) {
 
 export class CompanySalesController {
   static async getLeads(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try { ApiResponse.success(res, 'Leads fetched successfully', await CompanySalesService.getLeads(req.user!.companyId!)); } catch (error) { next(error); }
+    try { ApiResponse.success(res, 'Leads fetched successfully', await CompanySalesService.getLeads(req.user!.companyId!, req.user!.role === 'COMPANY_ADMIN' ? undefined : req.user!.id)); } catch (error) { next(error); }
   }
 
   static async createLead(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -35,7 +35,7 @@ export class CompanySalesController {
   }
 
   static async getSales(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try { ApiResponse.success(res, 'Sales fetched successfully', await CompanySalesService.getSales(req.user!.companyId!)); } catch (error) { next(error); }
+    try { ApiResponse.success(res, 'Sales fetched successfully', await CompanySalesService.getSales(req.user!.companyId!, req.user!.role === 'COMPANY_ADMIN' ? undefined : req.user!.id)); } catch (error) { next(error); }
   }
 
   static async createSale(req: AuthenticatedRequest, res: Response, next: NextFunction) {
