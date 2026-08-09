@@ -14,10 +14,52 @@ const messageWithSender = (message: IMessage, userId: string) => {
     senderName: sender.name || 'Workspace member',
     isMine: String(sender._id || sender) === userId,
     isSeen: message.readBy?.some((readerId) => readerId.toString() !== userId) || false,
+    isEdited: Boolean(message.editedAt),
   };
 };
 
 export class CompanyAuthService {
+  static async canAccessConversation(companyId: string, userId: string, role: Roles, conversationId: string) {
+    if (!Types.ObjectId.isValid(conversationId)) return false;
+    const group = await Group.findOne({ _id: conversationId, companyId });
+    if (group) return role === Roles.COMPANY_ADMIN || group.privacy === 'public' || group.createdBy.toString() === userId || group.members.some((memberId) => memberId.toString() === userId);
+    const employee = await Employee.findOne({ companyId, _id: conversationId, isSuspended: false });
+    return Boolean(employee);
+  }
+
+  static async getRealtimeMessage(companyId: string, userId: string, messageId: string) {
+    const message = await Message.findOne({ companyId, _id: messageId }).populate('senderId', 'name');
+    return message ? messageWithSender(message, userId) : null;
+  }
+
+  static async markConversationRead(companyId: string, userId: string, role: Roles, conversationId: string) {
+    const allowed = await this.canAccessConversation(companyId, userId, role, conversationId);
+    if (!allowed) return { senderIds: [], messageIds: [] };
+    const isGroup = Boolean(await Group.exists({ _id: conversationId, companyId }));
+    const filter = isGroup
+      ? { companyId, groupId: conversationId, senderId: { $ne: userId } }
+      : { companyId, recipientId: userId, senderId: conversationId };
+    const unread = await Message.find({ ...filter, readBy: { $ne: userId } }).select('_id senderId');
+    if (!unread.length) return { senderIds: [], messageIds: [] };
+    await Message.updateMany({ _id: { $in: unread.map((message) => message._id) } }, { $addToSet: { readBy: userId } });
+    return {
+      senderIds: Array.from(new Set(unread.map((message) => message.senderId.toString()))),
+      messageIds: unread.map((message) => message._id.toString()),
+    };
+  }
+
+  static async getConversationAudience(companyId: string, conversationId: string) {
+    if (!Types.ObjectId.isValid(conversationId)) return [];
+    const group = await Group.findOne({ _id: conversationId, companyId });
+    if (group) {
+      if (group.privacy === 'private') return Array.from(new Set([group.createdBy.toString(), ...group.members.map((id) => id.toString())]));
+      const employees = await Employee.find({ companyId, isSuspended: false }).select('_id');
+      return employees.map((employee) => employee._id.toString());
+    }
+    const employee = await Employee.findOne({ companyId, _id: conversationId, isSuspended: false }).select('_id');
+    return employee ? [employee._id.toString()] : [];
+  }
+
   static async login(identifier: string, password: string) {
     const company = await Company.findOne({ status: CompanyStatus.ACTIVE });
     if (!company) {
@@ -83,11 +125,7 @@ export class CompanyAuthService {
         { privacy: 'private', members: employee._id },
       ],
     });
-    const chatEmployees = isAdmin ? [] : await Employee.find({
-      companyId,
-      role: { $ne: Roles.COMPANY_ADMIN },
-      isSuspended: false,
-    }).select('_id employeeId name role email');
+    const chatEmployees = isAdmin ? [] : await Employee.find({ companyId, isSuspended: false }).select('_id employeeId name role email');
     const visibleGroupIds = groups.map((group) => group._id);
     const messages = await Message.find(isAdmin ? { companyId } : {
       companyId,
@@ -367,7 +405,6 @@ export class CompanyAuthService {
       if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
         throw { statusCode: 403, message: 'Access denied to private group.' };
       }
-      await Message.updateMany({ companyId, groupId: conversationId, senderId: { $ne: userId } }, { $addToSet: { readBy: userId } });
       const messages = await Message.find({ companyId, groupId: conversationId }).populate('senderId', 'name').sort({ createdAt: 1 });
       return messages.map((message) => messageWithSender(message, userId));
     }
@@ -375,11 +412,6 @@ export class CompanyAuthService {
     if (!isObjectId) throw { statusCode: 404, message: 'Conversation not found.' };
     const employee = await Employee.findOne({ companyId, _id: conversationId });
     if (!employee) throw { statusCode: 404, message: 'Conversation not found.' };
-    if (role !== Roles.COMPANY_ADMIN && employee.role === Roles.COMPANY_ADMIN) {
-      throw { statusCode: 403, message: 'Access denied to this conversation.' };
-    }
-    await Message.updateMany({ companyId, recipientId: userId, senderId: conversationId }, { $addToSet: { readBy: userId } });
-
     const messages = await Message.find({
       companyId,
       $or: [
@@ -403,9 +435,6 @@ export class CompanyAuthService {
     if (!isObjectId) throw { statusCode: 404, message: 'Conversation not found.' };
     const employee = await Employee.findOne({ companyId, _id: conversationId });
     if (!employee) throw { statusCode: 404, message: 'Conversation not found.' };
-    if (role !== Roles.COMPANY_ADMIN && employee.role === Roles.COMPANY_ADMIN) {
-      throw { statusCode: 403, message: 'Access denied to this conversation.' };
-    }
 
     return Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
   }
@@ -413,7 +442,7 @@ export class CompanyAuthService {
   static async updateMessage(companyId: string, userId: string, messageId: string, content: string) {
     const message = await Message.findOneAndUpdate(
       { companyId, _id: messageId, senderId: userId },
-      { content },
+      { content, editedAt: new Date() },
       { new: true, runValidators: true },
     );
     if (!message) throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
@@ -421,8 +450,8 @@ export class CompanyAuthService {
   }
 
   static async deleteMessage(companyId: string, userId: string, messageId: string) {
-    const result = await Message.deleteOne({ companyId, _id: messageId, senderId: userId });
-    if (!result.deletedCount) throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
-    return { id: messageId };
+    const message = await Message.findOneAndDelete({ companyId, _id: messageId, senderId: userId });
+    if (!message) throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
+    return { id: messageId, groupId: message.groupId?.toString(), senderId: message.senderId.toString(), recipientId: message.recipientId?.toString() };
   }
 }

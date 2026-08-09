@@ -4,6 +4,7 @@ exports.CompanyAuthController = void 0;
 const express_validator_1 = require("express-validator");
 const companyAuthService_1 = require("../services/companyAuthService");
 const responseHandler_1 = require("../utils/responseHandler");
+const socket_1 = require("../realtime/socket");
 class CompanyAuthController {
     static async login(req, res, next) {
         try {
@@ -159,6 +160,10 @@ class CompanyAuthController {
     static async postMessage(req, res, next) {
         try {
             const message = await companyAuthService_1.CompanyAuthService.postGroupMessage(req.user.companyId, req.user.id, req.user.role, req.params.groupId, req.body);
+            const realtimeMessage = await companyAuthService_1.CompanyAuthService.getRealtimeMessage(req.user.companyId, req.user.id, message._id.toString());
+            const audience = await companyAuthService_1.CompanyAuthService.getConversationAudience(req.user.companyId, req.params.groupId);
+            (0, socket_1.emitUserEvent)([req.user.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.groupId });
+            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== req.user.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.params.groupId });
             responseHandler_1.ApiResponse.success(res, 'Message posted successfully', message, 201);
         }
         catch (error) {
@@ -191,6 +196,10 @@ class CompanyAuthController {
                 return;
             }
             const message = await companyAuthService_1.CompanyAuthService.postConversationMessage(req.user.companyId, req.user.id, req.user.role, req.params.conversationId, req.body.content);
+            const realtimeMessage = await companyAuthService_1.CompanyAuthService.getRealtimeMessage(req.user.companyId, req.user.id, message._id.toString());
+            const audience = await companyAuthService_1.CompanyAuthService.getConversationAudience(req.user.companyId, req.params.conversationId);
+            (0, socket_1.emitUserEvent)([req.user.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.conversationId });
+            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== req.user.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.user.id });
             responseHandler_1.ApiResponse.success(res, 'Message posted successfully', message, 201);
         }
         catch (error) {
@@ -205,6 +214,10 @@ class CompanyAuthController {
                 return;
             }
             const message = await companyAuthService_1.CompanyAuthService.updateMessage(req.user.companyId, req.user.id, req.params.messageId, req.body.content);
+            if (message.groupId)
+                (0, socket_1.emitConversationEvent)(message.groupId.toString(), 'message:updated', message);
+            else if (message.recipientId)
+                (0, socket_1.emitDirectEvent)([req.user.id, message.recipientId.toString()], 'message:updated', message);
             responseHandler_1.ApiResponse.success(res, 'Message updated successfully', message);
         }
         catch (error) {
@@ -214,6 +227,10 @@ class CompanyAuthController {
     static async deleteMessage(req, res, next) {
         try {
             const result = await companyAuthService_1.CompanyAuthService.deleteMessage(req.user.companyId, req.user.id, req.params.messageId);
+            if (result.groupId)
+                (0, socket_1.emitConversationEvent)(result.groupId, 'message:deleted', result);
+            else
+                (0, socket_1.emitDirectEvent)([result.senderId, result.recipientId].filter(Boolean), 'message:deleted', result);
             responseHandler_1.ApiResponse.success(res, 'Message deleted successfully', result);
         }
         catch (error) {

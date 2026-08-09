@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import { CompanyAuthService } from '../services/companyAuthService';
 import { ApiResponse } from '../utils/responseHandler';
 import { AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { emitConversationEvent, emitDirectEvent, emitUserEvent } from '../realtime/socket';
 
 export class CompanyAuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
@@ -172,6 +173,10 @@ export class CompanyAuthController {
         req.params.groupId,
         req.body
       );
+      const realtimeMessage = await CompanyAuthService.getRealtimeMessage(req.user!.companyId!, req.user!.id, message._id.toString());
+      const audience = await CompanyAuthService.getConversationAudience(req.user!.companyId!, req.params.groupId);
+      emitUserEvent([req.user!.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.groupId });
+      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.params.groupId });
       ApiResponse.success(res, 'Message posted successfully', message, 201);
     } catch (error) {
       next(error);
@@ -204,6 +209,10 @@ export class CompanyAuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }
       const message = await CompanyAuthService.postConversationMessage(req.user!.companyId!, req.user!.id, req.user!.role, req.params.conversationId, req.body.content);
+      const realtimeMessage = await CompanyAuthService.getRealtimeMessage(req.user!.companyId!, req.user!.id, message._id.toString());
+      const audience = await CompanyAuthService.getConversationAudience(req.user!.companyId!, req.params.conversationId);
+      emitUserEvent([req.user!.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.conversationId });
+      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.user!.id });
       ApiResponse.success(res, 'Message posted successfully', message, 201);
     } catch (error) { next(error); }
   }
@@ -213,6 +222,8 @@ export class CompanyAuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }
       const message = await CompanyAuthService.updateMessage(req.user!.companyId!, req.user!.id, req.params.messageId, req.body.content);
+      if (message.groupId) emitConversationEvent(message.groupId.toString(), 'message:updated', message);
+      else if (message.recipientId) emitDirectEvent([req.user!.id, message.recipientId.toString()], 'message:updated', message);
       ApiResponse.success(res, 'Message updated successfully', message);
     } catch (error) { next(error); }
   }
@@ -220,6 +231,8 @@ export class CompanyAuthController {
   static async deleteMessage(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const result = await CompanyAuthService.deleteMessage(req.user!.companyId!, req.user!.id, req.params.messageId);
+      if (result.groupId) emitConversationEvent(result.groupId, 'message:deleted', result);
+      else emitDirectEvent([result.senderId, result.recipientId].filter(Boolean) as string[], 'message:deleted', result);
       ApiResponse.success(res, 'Message deleted successfully', result);
     } catch (error) { next(error); }
   }

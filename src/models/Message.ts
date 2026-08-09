@@ -10,6 +10,7 @@ export interface IMessage extends Document {
   content: string;
   createdAt: Date;
   updatedAt: Date;
+  editedAt?: Date;
 }
 
 const MessageSchema = new Schema<IMessage>(
@@ -19,6 +20,7 @@ const MessageSchema = new Schema<IMessage>(
     recipientId: { type: Schema.Types.ObjectId, ref: 'Employee' },
     readBy: [{ type: Schema.Types.ObjectId, ref: 'Employee' }],
     content: { type: String, required: true, trim: true },
+    editedAt: { type: Date },
   },
   { timestamps: true }
 );

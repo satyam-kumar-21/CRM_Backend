@@ -19,9 +19,53 @@ const messageWithSender = (message, userId) => {
         senderName: sender.name || 'Workspace member',
         isMine: String(sender._id || sender) === userId,
         isSeen: message.readBy?.some((readerId) => readerId.toString() !== userId) || false,
+        isEdited: Boolean(message.editedAt),
     };
 };
 class CompanyAuthService {
+    static async canAccessConversation(companyId, userId, role, conversationId) {
+        if (!mongoose_1.Types.ObjectId.isValid(conversationId))
+            return false;
+        const group = await Group_1.Group.findOne({ _id: conversationId, companyId });
+        if (group)
+            return role === index_1.Roles.COMPANY_ADMIN || group.privacy === 'public' || group.createdBy.toString() === userId || group.members.some((memberId) => memberId.toString() === userId);
+        const employee = await Employee_1.Employee.findOne({ companyId, _id: conversationId, isSuspended: false });
+        return Boolean(employee);
+    }
+    static async getRealtimeMessage(companyId, userId, messageId) {
+        const message = await Message_1.Message.findOne({ companyId, _id: messageId }).populate('senderId', 'name');
+        return message ? messageWithSender(message, userId) : null;
+    }
+    static async markConversationRead(companyId, userId, role, conversationId) {
+        const allowed = await this.canAccessConversation(companyId, userId, role, conversationId);
+        if (!allowed)
+            return { senderIds: [], messageIds: [] };
+        const isGroup = Boolean(await Group_1.Group.exists({ _id: conversationId, companyId }));
+        const filter = isGroup
+            ? { companyId, groupId: conversationId, senderId: { $ne: userId } }
+            : { companyId, recipientId: userId, senderId: conversationId };
+        const unread = await Message_1.Message.find({ ...filter, readBy: { $ne: userId } }).select('_id senderId');
+        if (!unread.length)
+            return { senderIds: [], messageIds: [] };
+        await Message_1.Message.updateMany({ _id: { $in: unread.map((message) => message._id) } }, { $addToSet: { readBy: userId } });
+        return {
+            senderIds: Array.from(new Set(unread.map((message) => message.senderId.toString()))),
+            messageIds: unread.map((message) => message._id.toString()),
+        };
+    }
+    static async getConversationAudience(companyId, conversationId) {
+        if (!mongoose_1.Types.ObjectId.isValid(conversationId))
+            return [];
+        const group = await Group_1.Group.findOne({ _id: conversationId, companyId });
+        if (group) {
+            if (group.privacy === 'private')
+                return Array.from(new Set([group.createdBy.toString(), ...group.members.map((id) => id.toString())]));
+            const employees = await Employee_1.Employee.find({ companyId, isSuspended: false }).select('_id');
+            return employees.map((employee) => employee._id.toString());
+        }
+        const employee = await Employee_1.Employee.findOne({ companyId, _id: conversationId, isSuspended: false }).select('_id');
+        return employee ? [employee._id.toString()] : [];
+    }
     static async login(identifier, password) {
         const company = await Company_1.Company.findOne({ status: index_1.CompanyStatus.ACTIVE });
         if (!company) {
@@ -81,11 +125,7 @@ class CompanyAuthService {
                 { privacy: 'private', members: employee._id },
             ],
         });
-        const chatEmployees = isAdmin ? [] : await Employee_1.Employee.find({
-            companyId,
-            role: { $ne: index_1.Roles.COMPANY_ADMIN },
-            isSuspended: false,
-        }).select('_id employeeId name role email');
+        const chatEmployees = isAdmin ? [] : await Employee_1.Employee.find({ companyId, isSuspended: false }).select('_id employeeId name role email');
         const visibleGroupIds = groups.map((group) => group._id);
         const messages = await Message_1.Message.find(isAdmin ? { companyId } : {
             companyId,
@@ -343,7 +383,6 @@ class CompanyAuthService {
             if (role !== index_1.Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
                 throw { statusCode: 403, message: 'Access denied to private group.' };
             }
-            await Message_1.Message.updateMany({ companyId, groupId: conversationId, senderId: { $ne: userId } }, { $addToSet: { readBy: userId } });
             const messages = await Message_1.Message.find({ companyId, groupId: conversationId }).populate('senderId', 'name').sort({ createdAt: 1 });
             return messages.map((message) => messageWithSender(message, userId));
         }
@@ -352,10 +391,6 @@ class CompanyAuthService {
         const employee = await Employee_1.Employee.findOne({ companyId, _id: conversationId });
         if (!employee)
             throw { statusCode: 404, message: 'Conversation not found.' };
-        if (role !== index_1.Roles.COMPANY_ADMIN && employee.role === index_1.Roles.COMPANY_ADMIN) {
-            throw { statusCode: 403, message: 'Access denied to this conversation.' };
-        }
-        await Message_1.Message.updateMany({ companyId, recipientId: userId, senderId: conversationId }, { $addToSet: { readBy: userId } });
         const messages = await Message_1.Message.find({
             companyId,
             $or: [
@@ -379,22 +414,19 @@ class CompanyAuthService {
         const employee = await Employee_1.Employee.findOne({ companyId, _id: conversationId });
         if (!employee)
             throw { statusCode: 404, message: 'Conversation not found.' };
-        if (role !== index_1.Roles.COMPANY_ADMIN && employee.role === index_1.Roles.COMPANY_ADMIN) {
-            throw { statusCode: 403, message: 'Access denied to this conversation.' };
-        }
         return Message_1.Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
     }
     static async updateMessage(companyId, userId, messageId, content) {
-        const message = await Message_1.Message.findOneAndUpdate({ companyId, _id: messageId, senderId: userId }, { content }, { new: true, runValidators: true });
+        const message = await Message_1.Message.findOneAndUpdate({ companyId, _id: messageId, senderId: userId }, { content, editedAt: new Date() }, { new: true, runValidators: true });
         if (!message)
             throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
         return { ...message.toObject(), isMine: true };
     }
     static async deleteMessage(companyId, userId, messageId) {
-        const result = await Message_1.Message.deleteOne({ companyId, _id: messageId, senderId: userId });
-        if (!result.deletedCount)
+        const message = await Message_1.Message.findOneAndDelete({ companyId, _id: messageId, senderId: userId });
+        if (!message)
             throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
-        return { id: messageId };
+        return { id: messageId, groupId: message.groupId?.toString(), senderId: message.senderId.toString(), recipientId: message.recipientId?.toString() };
     }
 }
 exports.CompanyAuthService = CompanyAuthService;

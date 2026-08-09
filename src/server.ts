@@ -4,13 +4,17 @@ dotenv.config();
 
 import app from './app';
 import { connectDB } from './config/db';
+import { createServer } from 'http';
+import { configureSocket } from './realtime/socket';
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
 
-  app.listen(PORT, () => {
+  const server = createServer(app);
+  configureSocket(server);
+  server.listen(PORT, () => {
     console.log(`[Server] Enterprise CRM Engine active on port ${PORT}`);
   });
 };
