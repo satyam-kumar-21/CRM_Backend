@@ -1,0 +1,428 @@
+import bcrypt from 'bcrypt';
+import { Types } from 'mongoose';
+import { Employee, IEmployee } from '../models/Employee';
+import { Company } from '../models/Company';
+import { Roles, CompanyStatus } from '../constants/index';
+import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
+import { Group } from '../models/Group';
+import { Message, IMessage } from '../models/Message';
+
+const messageWithSender = (message: IMessage, userId: string) => {
+  const sender = message.senderId as unknown as { _id?: unknown; name?: string };
+  return {
+    ...message.toObject(),
+    senderName: sender.name || 'Workspace member',
+    isMine: String(sender._id || sender) === userId,
+    isSeen: message.readBy?.some((readerId) => readerId.toString() !== userId) || false,
+  };
+};
+
+export class CompanyAuthService {
+  static async login(identifier: string, password: string) {
+    const company = await Company.findOne({ status: CompanyStatus.ACTIVE });
+    if (!company) {
+      throw { statusCode: 401, message: 'Company not configured.' };
+    }
+
+    let employee: IEmployee | null = null;
+    if (identifier.includes('@')) {
+      employee = await Employee.findOne({ companyId: company._id, email: identifier.toLowerCase() });
+    } else {
+      employee = await Employee.findOne({ companyId: company._id, employeeId: identifier.trim() });
+    }
+    if (!employee || employee.isSuspended) {
+      throw { statusCode: 401, message: 'Invalid employee credentials or account suspended.' };
+    }
+
+    const isMatch = await bcrypt.compare(password, employee.passwordHash);
+    if (!isMatch) {
+      throw { statusCode: 401, message: 'Invalid employee credentials.' };
+    }
+
+    const payload: ITokenPayload = {
+      id: employee._id.toString(),
+      role: employee.role,
+      companyId: company._id.toString(),
+      portalType: employee.role === Roles.COMPANY_ADMIN ? 'COMPANY_ADMIN' : 'EMPLOYEE',
+    };
+
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    employee.refreshTokens.push(refreshToken);
+    await employee.save();
+
+    return {
+      employee: {
+        id: employee._id,
+        employeeId: employee.employeeId,
+        name: employee.name,
+        role: employee.role,
+      },
+      company: {
+        id: company._id,
+        name: company.name,
+      },
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  static async getDashboard(employeeId: string, companyId: string, role: Roles) {
+    const company = await Company.findById(companyId);
+    const employee = await Employee.findOne({ companyId, _id: employeeId });
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+    const employeeCount = await Employee.countDocuments({ companyId });
+    const isAdmin = role === Roles.COMPANY_ADMIN;
+    const groups = await Group.find(isAdmin ? { companyId } : {
+      companyId,
+      $or: [
+        { privacy: 'public' },
+        { privacy: 'private', members: employee._id },
+      ],
+    });
+    const chatEmployees = isAdmin ? [] : await Employee.find({
+      companyId,
+      role: { $ne: Roles.COMPANY_ADMIN },
+      isSuspended: false,
+    }).select('_id employeeId name role email');
+    const visibleGroupIds = groups.map((group) => group._id);
+    const messages = await Message.find(isAdmin ? { companyId } : {
+      companyId,
+      $or: [
+        { groupId: { $in: visibleGroupIds } },
+        { senderId: employee._id },
+        { recipientId: employee._id },
+      ],
+    }).populate('senderId', 'name').sort({ createdAt: -1 }).limit(10);
+    const recentMessages = messages.map((message) => messageWithSender(message, employeeId));
+
+    return {
+      company: {
+        id: company?._id,
+        name: company?.name,
+        status: company?.status,
+        plan: company?.plan,
+      },
+      employee: {
+        _id: employee._id,
+        employeeId: employee.employeeId,
+        name: employee.name,
+        email: employee.email || '',
+        role: employee.role,
+        monthlySalesTarget: employee.monthlySalesTarget || 0,
+        remoteTarget: employee.remoteTarget || 0,
+        monthlySalesAchieved: employee.monthlySalesAchieved || 0,
+        leadsAssigned: employee.leadsAssigned || 0,
+        leadsConverted: employee.leadsConverted || 0,
+        phone: employee.phone,
+        createdAt: employee.createdAt,
+      },
+      stats: {
+        totalEmployees: employeeCount,
+        activeGroups: groups.length,
+        recentMessages: recentMessages.length,
+      },
+      groups,
+      chatEmployees,
+      recentMessages,
+    };
+  }
+
+  static async createEmployee(companyId: string, data: { name: string; email?: string; phone: string; role: Roles; password: string; permissions?: string[]; monthlySalesTarget?: number; remoteTarget?: number }) {
+    // Allow empty email (optional)
+    if (data.email) {
+      const existing = await Employee.findOne({ companyId, email: data.email.toLowerCase() });
+      if (existing) {
+        throw { statusCode: 400, message: 'Employee with this email already exists for the company.' };
+      }
+    }
+
+    const generateEmployeeId = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let id = '';
+      for (let i = 0; i < 8; i++) {
+        id += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      if (!/[A-Z]/.test(id) || !/[0-9]/.test(id)) {
+        return generateEmployeeId();
+      }
+      return id;
+    };
+
+    let employeeId = generateEmployeeId();
+    while (await Employee.exists({ companyId, employeeId })) {
+      employeeId = generateEmployeeId();
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 10);
+
+    const employee = await Employee.create({
+      companyId,
+      employeeId,
+      name: data.name,
+      email: data.email ? data.email.toLowerCase() : undefined,
+      passwordHash,
+      phone: data.phone,
+      role: data.role,
+      monthlySalesTarget: data.monthlySalesTarget || 0,
+      monthlySalesAchieved: 0,
+      remoteTarget: data.remoteTarget || 0,
+      permissions: data.permissions || [],
+      isSuspended: false,
+      refreshTokens: [],
+    });
+
+    return { id: employee._id, employeeId: employee.employeeId, name: employee.name, email: employee.email, role: employee.role, permissions: employee.permissions };
+  }
+
+  static async getEmployees(companyId: string) {
+    const employees = await Employee.find({ companyId }).sort({ createdAt: -1 });
+    return Promise.all(employees.map(async (employee) => {
+      const latestMessage = await Message.findOne({
+        companyId,
+        $or: [{ senderId: employee._id }, { recipientId: employee._id }],
+      }).sort({ createdAt: -1 });
+      return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null };
+    }));
+  }
+
+  static async updateEmployeePermissions(companyId: string, employeeId: string, permissions: string[]) {
+    const employee = await Employee.findOneAndUpdate(
+      { companyId, _id: employeeId },
+      { permissions },
+      { new: true }
+    );
+
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+
+    return { id: employee._id, permissions: employee.permissions };
+  }
+
+  static async updateEmployeeStatus(companyId: string, employeeId: string, isSuspended: boolean) {
+    const employee = await Employee.findOne({ companyId, _id: employeeId });
+
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+
+    if (employee.role === Roles.COMPANY_ADMIN) {
+      throw { statusCode: 400, message: 'Company admin accounts cannot be blocked.' };
+    }
+
+    employee.isSuspended = isSuspended;
+    if (isSuspended) employee.refreshTokens = [];
+    await employee.save();
+
+    return { id: employee._id, isSuspended: employee.isSuspended };
+  }
+
+  static async deleteEmployee(companyId: string, employeeId: string) {
+    const employee = await Employee.findOne({ companyId, _id: employeeId });
+
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+
+    if (employee.role === Roles.COMPANY_ADMIN) {
+      throw { statusCode: 400, message: 'Company admin accounts cannot be deleted.' };
+    }
+
+    await Employee.deleteOne({ _id: employee._id, companyId });
+  }
+
+  static async updateEmployee(companyId: string, employeeId: string, data: { name?: string; email?: string; phone?: string; role?: Roles; password?: string; monthlySalesTarget?: number; remoteTarget?: number; permissions?: string[] }) {
+    const employee = await Employee.findOne({ companyId, _id: employeeId });
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+
+    if (data.email && data.email.toLowerCase() !== employee.email) {
+      const existing = await Employee.findOne({ companyId, email: data.email.toLowerCase() });
+      if (existing) {
+        throw { statusCode: 400, message: 'Employee with this email already exists for the company.' };
+      }
+      employee.email = data.email.toLowerCase();
+    }
+
+    if (data.name) employee.name = data.name;
+    if (data.phone) employee.phone = data.phone;
+    if (data.role) employee.role = data.role;
+    if (data.password) employee.passwordHash = await bcrypt.hash(data.password, 10);
+    if (data.monthlySalesTarget !== undefined) employee.monthlySalesTarget = data.monthlySalesTarget;
+    if (data.remoteTarget !== undefined) employee.remoteTarget = data.remoteTarget;
+    if (data.permissions) employee.permissions = data.permissions;
+
+    await employee.save();
+
+    return {
+      id: employee._id,
+      employeeId: employee.employeeId,
+      name: employee.name,
+      email: employee.email,
+      phone: employee.phone,
+      role: employee.role,
+      monthlySalesTarget: employee.monthlySalesTarget,
+      remoteTarget: employee.remoteTarget,
+      isSuspended: employee.isSuspended,
+      permissions: employee.permissions,
+    };
+  }
+
+  static async createGroup(companyId: string, creatorId: string, data: { name: string; description?: string; privacy?: 'public' | 'private'; memberIds?: string[] }) {
+    const selectedMemberIds = Array.from(new Set(data.memberIds || []));
+    const memberIds = data.privacy === 'private' ? Array.from(new Set([creatorId, ...selectedMemberIds])) : [];
+    if (data.privacy === 'private') {
+      const validMembers = await Employee.countDocuments({ companyId, _id: { $in: selectedMemberIds }, role: { $ne: Roles.COMPANY_ADMIN }, isSuspended: false });
+      if (validMembers !== selectedMemberIds.length) {
+        throw { statusCode: 400, message: 'One or more selected employees are invalid or unavailable.' };
+      }
+    }
+    const group = await Group.create({
+      companyId,
+      createdBy: creatorId,
+      name: data.name,
+      description: data.description || '',
+      privacy: data.privacy || 'public',
+      members: memberIds,
+    });
+    return group;
+  }
+
+  static async updateGroup(companyId: string, groupId: string, data: { name?: string; description?: string; privacy?: 'public' | 'private'; memberIds?: string[] }) {
+    if (!Types.ObjectId.isValid(groupId)) throw { statusCode: 404, message: 'Group not found.' };
+    const group = await Group.findOne({ _id: groupId, companyId });
+    if (!group) throw { statusCode: 404, message: 'Group not found.' };
+
+    const nextPrivacy = data.privacy || group.privacy;
+    if (data.name !== undefined) group.name = data.name;
+    if (data.description !== undefined) group.description = data.description;
+    group.privacy = nextPrivacy;
+    if (nextPrivacy === 'public') {
+      group.members = [];
+    } else if (data.memberIds !== undefined) {
+      const selectedMemberIds = Array.from(new Set(data.memberIds));
+      const validMembers = await Employee.countDocuments({ companyId, _id: { $in: selectedMemberIds }, role: { $ne: Roles.COMPANY_ADMIN }, isSuspended: false });
+      if (validMembers !== selectedMemberIds.length) throw { statusCode: 400, message: 'One or more selected employees are invalid or unavailable.' };
+      group.members = Array.from(new Set([group.createdBy.toString(), ...selectedMemberIds])) as unknown as typeof group.members;
+    }
+    await group.save();
+    return group;
+  }
+
+  static async deleteGroup(companyId: string, groupId: string) {
+    if (!Types.ObjectId.isValid(groupId)) throw { statusCode: 404, message: 'Group not found.' };
+    const group = await Group.findOneAndDelete({ _id: groupId, companyId });
+    if (!group) throw { statusCode: 404, message: 'Group not found.' };
+    await Message.deleteMany({ companyId, groupId });
+  }
+
+  static async postGroupMessage(companyId: string, senderId: string, role: Roles, groupId: string, data: { content: string }) {
+    if (!Types.ObjectId.isValid(groupId)) {
+      throw { statusCode: 404, message: 'Group not found.' };
+    }
+    const group = await Group.findOne({ _id: groupId, companyId });
+    if (!group) {
+      throw { statusCode: 404, message: 'Group not found.' };
+    }
+    if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === senderId.toString()) && group.createdBy.toString() !== senderId.toString()) {
+      throw { statusCode: 403, message: 'Access denied to private group.' };
+    }
+
+    const message = await Message.create({
+      companyId,
+      groupId,
+      senderId,
+      content: data.content,
+      readBy: [senderId],
+    });
+
+    return message;
+  }
+
+  static async getGroupMessages(companyId: string, userId: string, role: Roles, groupId: string) {
+    if (!Types.ObjectId.isValid(groupId)) {
+      throw { statusCode: 404, message: 'Group not found.' };
+    }
+    const group = await Group.findOne({ _id: groupId, companyId });
+    if (!group) {
+      throw { statusCode: 404, message: 'Group not found.' };
+    }
+    if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
+      throw { statusCode: 403, message: 'Access denied to private group.' };
+    }
+    await Message.updateMany({ companyId, groupId, senderId: { $ne: userId } }, { $addToSet: { readBy: userId } });
+    const messages = await Message.find({ companyId, groupId }).populate('senderId', 'name').sort({ createdAt: 1 });
+    return messages.map((message) => messageWithSender(message, userId));
+  }
+
+  static async getConversationMessages(companyId: string, userId: string, role: Roles, conversationId: string) {
+    const isObjectId = Types.ObjectId.isValid(conversationId);
+    const group = isObjectId ? await Group.findOne({ _id: conversationId, companyId }) : null;
+    if (group) {
+      if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
+        throw { statusCode: 403, message: 'Access denied to private group.' };
+      }
+      await Message.updateMany({ companyId, groupId: conversationId, senderId: { $ne: userId } }, { $addToSet: { readBy: userId } });
+      const messages = await Message.find({ companyId, groupId: conversationId }).populate('senderId', 'name').sort({ createdAt: 1 });
+      return messages.map((message) => messageWithSender(message, userId));
+    }
+
+    if (!isObjectId) throw { statusCode: 404, message: 'Conversation not found.' };
+    const employee = await Employee.findOne({ companyId, _id: conversationId });
+    if (!employee) throw { statusCode: 404, message: 'Conversation not found.' };
+    if (role !== Roles.COMPANY_ADMIN && employee.role === Roles.COMPANY_ADMIN) {
+      throw { statusCode: 403, message: 'Access denied to this conversation.' };
+    }
+    await Message.updateMany({ companyId, recipientId: userId, senderId: conversationId }, { $addToSet: { readBy: userId } });
+
+    const messages = await Message.find({
+      companyId,
+      $or: [
+        { senderId: userId, recipientId: conversationId },
+        { senderId: conversationId, recipientId: userId },
+      ],
+    }).populate('senderId', 'name').sort({ createdAt: 1 });
+    return messages.map((message) => messageWithSender(message, userId));
+  }
+
+  static async postConversationMessage(companyId: string, userId: string, role: Roles, conversationId: string, content: string) {
+    const isObjectId = Types.ObjectId.isValid(conversationId);
+    const group = isObjectId ? await Group.findOne({ _id: conversationId, companyId }) : null;
+    if (group) {
+      if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
+        throw { statusCode: 403, message: 'Access denied to private group.' };
+      }
+      return Message.create({ companyId, groupId: conversationId, senderId: userId, content, readBy: [userId] });
+    }
+
+    if (!isObjectId) throw { statusCode: 404, message: 'Conversation not found.' };
+    const employee = await Employee.findOne({ companyId, _id: conversationId });
+    if (!employee) throw { statusCode: 404, message: 'Conversation not found.' };
+    if (role !== Roles.COMPANY_ADMIN && employee.role === Roles.COMPANY_ADMIN) {
+      throw { statusCode: 403, message: 'Access denied to this conversation.' };
+    }
+
+    return Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
+  }
+
+  static async updateMessage(companyId: string, userId: string, messageId: string, content: string) {
+    const message = await Message.findOneAndUpdate(
+      { companyId, _id: messageId, senderId: userId },
+      { content },
+      { new: true, runValidators: true },
+    );
+    if (!message) throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
+    return { ...message.toObject(), isMine: true };
+  }
+
+  static async deleteMessage(companyId: string, userId: string, messageId: string) {
+    const result = await Message.deleteOne({ companyId, _id: messageId, senderId: userId });
+    if (!result.deletedCount) throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
+    return { id: messageId };
+  }
+}

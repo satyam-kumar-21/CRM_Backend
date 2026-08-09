@@ -1,0 +1,35 @@
+import { Schema, model, Document } from 'mongoose';
+import { tenantPlugin } from '../plugins/tenantPlugin';
+
+export type PaymentMethod = 'Card' | 'Check' | 'Wire Transfer' | 'Cash' | 'Other';
+
+export interface ISale extends Document {
+  companyId: Schema.Types.ObjectId;
+  leadId?: Schema.Types.ObjectId;
+  name: string;
+  country: string;
+  system: string;
+  connectedBy: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  saleDate: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const SaleSchema = new Schema<ISale>(
+  {
+    leadId: { type: Schema.Types.ObjectId, ref: 'Lead' },
+    name: { type: String, required: true, trim: true },
+    country: { type: String, required: true, trim: true },
+    system: { type: String, required: true, trim: true },
+    connectedBy: { type: String, required: true, trim: true },
+    amount: { type: Number, required: true, min: 0 },
+    paymentMethod: { type: String, enum: ['Card', 'Check', 'Wire Transfer', 'Cash', 'Other'], required: true },
+    saleDate: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
+SaleSchema.plugin(tenantPlugin);
+export const Sale = model<ISale>('Sale', SaleSchema);
