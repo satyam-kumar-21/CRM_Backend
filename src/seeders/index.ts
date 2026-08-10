@@ -19,23 +19,23 @@ const seedDefaultCompany = async () => {
   try {
     await connectDB();
 
-    const existing = await Company.findOne({ name: 'Default Company' });
+    const existing = await Company.findOne({ email: 'techno@admin.com' });
     if (existing) {
-      console.log('[Seeder] Default company already exists');
+      console.log('[Seeder] Techno Sky Solutions company already exists');
       await mongoose.connection.close();
       process.exit(0);
     }
 
     const company = await Company.create({
       companyIdString: 'COMP-001',
-      companyCode: 'DEFAULT',
-      name: 'Default Company',
-      email: 'admin@gmail.com',
+      companyCode: 'TECHNO',
+      name: 'Techno Sky Solutions',
+      email: 'techno@admin.com',
       phone: '+0000000000',
       planExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     });
 
-    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const hashedPassword = await bcrypt.hash('12345678', 10);
 
     let empId = generateEmployeeId();
     while (await Employee.exists({ companyId: company._id, employeeId: empId })) {
@@ -46,7 +46,7 @@ const seedDefaultCompany = async () => {
       companyId: company._id,
       employeeId: empId,
       name: 'Company Admin',
-      email: 'admin@gmail.com',
+      email: 'techno@admin.com',
       passwordHash: hashedPassword,
       phone: '+0000000000',
       role: Roles.COMPANY_ADMIN,
@@ -55,9 +55,9 @@ const seedDefaultCompany = async () => {
       refreshTokens: [],
     });
 
-    console.log('[Seeder] Default company and admin created');
-    console.log('Admin email: admin@gmail.com');
-    console.log('Admin password: admin123');
+    console.log('[Seeder] Techno Sky Solutions and admin created successfully');
+    console.log('Admin email: techno@admin.com');
+    console.log('Admin password: 12345678');
 
     await mongoose.connection.close();
     process.exit(0);
