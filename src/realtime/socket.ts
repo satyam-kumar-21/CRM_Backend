@@ -6,11 +6,15 @@ import { Roles } from '../constants/index';
 let io: Server | null = null;
 
 const employeeRoles = [Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.IT, Roles.INTERN];
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean);
 
 export const configureSocket = (server: import('http').Server) => {
   io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       credentials: true,
     },
   });
