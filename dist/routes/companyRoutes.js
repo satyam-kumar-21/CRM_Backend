@@ -45,6 +45,7 @@ router.delete('/groups/:groupId', (0, rbacMiddleware_1.authorizeRoles)(index_1.R
 router.post('/groups/:groupId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.postMessageValidation, companyAuthController_1.CompanyAuthController.postMessage);
 router.get('/groups/:groupId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.getGroupMessages);
 router.get('/conversations/:conversationId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.getConversationMessages);
+router.post('/conversations/:conversationId/read', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.markConversationRead);
 router.post('/conversations/:conversationId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.postMessageValidation, companyAuthController_1.CompanyAuthController.postConversationMessage);
 router.patch('/messages/:messageId', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.postMessageValidation, companyAuthController_1.CompanyAuthController.updateMessage);
 router.delete('/messages/:messageId', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.deleteMessage);

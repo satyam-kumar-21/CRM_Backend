@@ -47,6 +47,7 @@ router.delete('/groups/:groupId', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAu
 router.post('/groups/:groupId/messages', authorizeRoles(...companyEmployeeRoles), postMessageValidation, CompanyAuthController.postMessage);
 router.get('/groups/:groupId/messages', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.getGroupMessages);
 router.get('/conversations/:conversationId/messages', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.getConversationMessages);
+router.post('/conversations/:conversationId/read', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.markConversationRead);
 router.post('/conversations/:conversationId/messages', authorizeRoles(...companyEmployeeRoles), postMessageValidation, CompanyAuthController.postConversationMessage);
 router.patch('/messages/:messageId', authorizeRoles(...companyEmployeeRoles), postMessageValidation, CompanyAuthController.updateMessage);
 router.delete('/messages/:messageId', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.deleteMessage);

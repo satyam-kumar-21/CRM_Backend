@@ -190,6 +190,15 @@ class CompanyAuthController {
             next(error);
         }
     }
+    static async markConversationRead(req, res, next) {
+        try {
+            const result = await companyAuthService_1.CompanyAuthService.markConversationRead(req.user.companyId, req.user.id, req.user.role, req.params.conversationId);
+            responseHandler_1.ApiResponse.success(res, 'Conversation marked as read', result);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
     static async postConversationMessage(req, res, next) {
         try {
             const errors = (0, express_validator_1.validationResult)(req);
