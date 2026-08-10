@@ -15,7 +15,17 @@ const app = (0, express_1.default)();
 // Security Middlewares
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+        const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+            .split(',')
+            .map((url) => url.trim())
+            .filter(Boolean);
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(new Error('Origin not allowed by CORS'));
+    },
     credentials: true,
 }));
 // Standard Middlewares

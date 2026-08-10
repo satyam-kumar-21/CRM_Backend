@@ -12,6 +12,8 @@ const index_1 = require("../constants/index");
 const jwt_1 = require("../utils/jwt");
 const Group_1 = require("../models/Group");
 const Message_1 = require("../models/Message");
+const Attendance_1 = require("../models/Attendance");
+const index_2 = require("../constants/index");
 const messageWithSender = (message, userId) => {
     const sender = message.senderId;
     return {
@@ -95,6 +97,11 @@ class CompanyAuthService {
         const refreshToken = (0, jwt_1.generateRefreshToken)(payload);
         employee.refreshTokens.push(refreshToken);
         await employee.save();
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        await Attendance_1.Attendance.findOneAndUpdate({ companyId: company._id, employeeId: employee._id, date: { $gte: dayStart, $lt: dayEnd } }, { $setOnInsert: { date: dayStart, checkIn: new Date(), status: index_2.AttendanceStatus.PRESENT, workHours: 0 } }, { upsert: true, new: true });
         return {
             employee: {
                 id: employee._id,
@@ -109,6 +116,19 @@ class CompanyAuthService {
             accessToken,
             refreshToken,
         };
+    }
+    static async recordLogout(employeeId, companyId) {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        const attendance = await Attendance_1.Attendance.findOne({ companyId, employeeId, date: { $gte: dayStart, $lt: dayEnd } });
+        if (!attendance || !attendance.checkIn)
+            return;
+        const checkOut = new Date();
+        attendance.checkOut = checkOut;
+        attendance.workHours = Math.max(0, (checkOut.getTime() - attendance.checkIn.getTime()) / 3600000);
+        await attendance.save();
     }
     static async getDashboard(employeeId, companyId, role) {
         const company = await Company_1.Company.findById(companyId);
@@ -125,7 +145,13 @@ class CompanyAuthService {
                 { privacy: 'private', members: employee._id },
             ],
         });
-        const chatEmployees = isAdmin ? [] : await Employee_1.Employee.find({ companyId, isSuspended: false }).select('_id employeeId name role email');
+        const chatEmployees = isAdmin ? [] : await Promise.all((await Employee_1.Employee.find({ companyId, isSuspended: false, _id: { $ne: employeeId } }).select('_id employeeId name role email')).map(async (chatEmployee) => {
+            const [latestMessage, unreadCount] = await Promise.all([
+                Message_1.Message.findOne({ companyId, $or: [{ senderId: chatEmployee._id, recipientId: employeeId }, { senderId: employeeId, recipientId: chatEmployee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
+                Message_1.Message.countDocuments({ companyId, senderId: chatEmployee._id, recipientId: employeeId, readBy: { $ne: employeeId } }),
+            ]);
+            return { ...chatEmployee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
+        }));
         const visibleGroupIds = groups.map((group) => group._id);
         const messages = await Message_1.Message.find(isAdmin ? { companyId } : {
             companyId,
@@ -136,6 +162,13 @@ class CompanyAuthService {
             ],
         }).populate('senderId', 'name').sort({ createdAt: -1 }).limit(10);
         const recentMessages = messages.map((message) => messageWithSender(message, employeeId));
+        const groupMetadata = await Promise.all(groups.map(async (group) => {
+            const [latestMessage, unreadCount] = await Promise.all([
+                Message_1.Message.findOne({ companyId, groupId: group._id }).sort({ createdAt: -1 }).select('createdAt'),
+                Message_1.Message.countDocuments({ companyId, groupId: group._id, senderId: { $ne: employeeId }, readBy: { $ne: employeeId } }),
+            ]);
+            return { id: group._id.toString(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
+        }));
         return {
             company: {
                 id: company?._id,
@@ -162,7 +195,7 @@ class CompanyAuthService {
                 activeGroups: groups.length,
                 recentMessages: recentMessages.length,
             },
-            groups,
+            groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
             chatEmployees,
             recentMessages,
         };
@@ -208,14 +241,14 @@ class CompanyAuthService {
         });
         return { id: employee._id, employeeId: employee.employeeId, name: employee.name, email: employee.email, role: employee.role, permissions: employee.permissions };
     }
-    static async getEmployees(companyId) {
-        const employees = await Employee_1.Employee.find({ companyId }).sort({ createdAt: -1 });
+    static async getEmployees(companyId, currentEmployeeId) {
+        const employees = await Employee_1.Employee.find({ companyId, _id: { $ne: currentEmployeeId } }).sort({ createdAt: -1 });
         return Promise.all(employees.map(async (employee) => {
-            const latestMessage = await Message_1.Message.findOne({
-                companyId,
-                $or: [{ senderId: employee._id }, { recipientId: employee._id }],
-            }).sort({ createdAt: -1 });
-            return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null };
+            const [latestMessage, unreadCount] = await Promise.all([
+                Message_1.Message.findOne({ companyId, $or: [{ senderId: employee._id }, { recipientId: employee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
+                Message_1.Message.countDocuments({ companyId, senderId: employee._id, recipientId: currentEmployeeId, readBy: { $ne: currentEmployeeId } }),
+            ]);
+            return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
         }));
     }
     static async updateEmployeePermissions(companyId, employeeId, permissions) {
@@ -273,6 +306,12 @@ class CompanyAuthService {
             employee.monthlySalesTarget = data.monthlySalesTarget;
         if (data.remoteTarget !== undefined)
             employee.remoteTarget = data.remoteTarget;
+        if (data.salaryAmount !== undefined)
+            employee.salaryAmount = data.salaryAmount;
+        if (data.salaryMonth !== undefined)
+            employee.salaryMonth = data.salaryMonth;
+        if (data.salaryCredited !== undefined)
+            employee.salaryCredited = data.salaryCredited;
         if (data.permissions)
             employee.permissions = data.permissions;
         await employee.save();
@@ -285,6 +324,9 @@ class CompanyAuthService {
             role: employee.role,
             monthlySalesTarget: employee.monthlySalesTarget,
             remoteTarget: employee.remoteTarget,
+            salaryAmount: employee.salaryAmount,
+            salaryMonth: employee.salaryMonth,
+            salaryCredited: employee.salaryCredited,
             isSuspended: employee.isSuspended,
             permissions: employee.permissions,
         };

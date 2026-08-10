@@ -14,7 +14,7 @@ function validate(req, res) {
 class CompanySalesController {
     static async getLeads(req, res, next) {
         try {
-            responseHandler_1.ApiResponse.success(res, 'Leads fetched successfully', await companySalesService_1.CompanySalesService.getLeads(req.user.companyId));
+            responseHandler_1.ApiResponse.success(res, 'Leads fetched successfully', await companySalesService_1.CompanySalesService.getLeads(req.user.companyId, req.user.role === 'COMPANY_ADMIN' ? undefined : req.user.id));
         }
         catch (error) {
             next(error);
@@ -50,7 +50,7 @@ class CompanySalesController {
     }
     static async getSales(req, res, next) {
         try {
-            responseHandler_1.ApiResponse.success(res, 'Sales fetched successfully', await companySalesService_1.CompanySalesService.getSales(req.user.companyId));
+            responseHandler_1.ApiResponse.success(res, 'Sales fetched successfully', await companySalesService_1.CompanySalesService.getSales(req.user.companyId, req.user.role === 'COMPANY_ADMIN' ? undefined : req.user.id));
         }
         catch (error) {
             next(error);

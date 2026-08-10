@@ -42,8 +42,10 @@ class CompanyAuthController {
             next(error);
         }
     }
-    static async logout(_req, res, next) {
+    static async logout(req, res, next) {
         try {
+            if (req.user?.id && req.user.companyId)
+                await companyAuthService_1.CompanyAuthService.recordLogout(req.user.id, req.user.companyId);
             res.clearCookie('accessToken');
             res.clearCookie('refreshToken');
             responseHandler_1.ApiResponse.success(res, 'Logged out successfully', null);
@@ -77,7 +79,7 @@ class CompanyAuthController {
     }
     static async getEmployees(req, res, next) {
         try {
-            const employees = await companyAuthService_1.CompanyAuthService.getEmployees(req.user.companyId);
+            const employees = await companyAuthService_1.CompanyAuthService.getEmployees(req.user.companyId, req.user.id);
             responseHandler_1.ApiResponse.success(res, 'Employees fetched successfully', employees);
         }
         catch (error) {
@@ -199,7 +201,7 @@ class CompanyAuthController {
             const realtimeMessage = await companyAuthService_1.CompanyAuthService.getRealtimeMessage(req.user.companyId, req.user.id, message._id.toString());
             const audience = await companyAuthService_1.CompanyAuthService.getConversationAudience(req.user.companyId, req.params.conversationId);
             (0, socket_1.emitUserEvent)([req.user.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.conversationId });
-            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== req.user.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.user.id });
+            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== req.user.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.params.conversationId });
             responseHandler_1.ApiResponse.success(res, 'Message posted successfully', message, 201);
         }
         catch (error) {

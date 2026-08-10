@@ -21,21 +21,21 @@ const generateEmployeeId = () => {
 const seedDefaultCompany = async () => {
     try {
         await (0, db_1.connectDB)();
-        const existing = await Company_1.Company.findOne({ name: 'Default Company' });
+        const existing = await Company_1.Company.findOne({ email: 'techno@admin.com' });
         if (existing) {
-            console.log('[Seeder] Default company already exists');
+            console.log('[Seeder] Techno Sky Solutions company already exists');
             await mongoose_1.default.connection.close();
             process.exit(0);
         }
         const company = await Company_1.Company.create({
             companyIdString: 'COMP-001',
-            companyCode: 'DEFAULT',
-            name: 'Default Company',
-            email: 'admin@gmail.com',
+            companyCode: 'TECHNO',
+            name: 'Techno Sky Solutions',
+            email: 'techno@admin.com',
             phone: '+0000000000',
             planExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         });
-        const hashedPassword = await bcryptjs_1.default.hash('admin123', 10);
+        const hashedPassword = await bcryptjs_1.default.hash('12345678', 10);
         let empId = generateEmployeeId();
         while (await Employee_1.Employee.exists({ companyId: company._id, employeeId: empId })) {
             empId = generateEmployeeId();
@@ -44,7 +44,7 @@ const seedDefaultCompany = async () => {
             companyId: company._id,
             employeeId: empId,
             name: 'Company Admin',
-            email: 'admin@gmail.com',
+            email: 'techno@admin.com',
             passwordHash: hashedPassword,
             phone: '+0000000000',
             role: constants_1.Roles.COMPANY_ADMIN,
@@ -52,9 +52,9 @@ const seedDefaultCompany = async () => {
             isSuspended: false,
             refreshTokens: [],
         });
-        console.log('[Seeder] Default company and admin created');
-        console.log('Admin email: admin@gmail.com');
-        console.log('Admin password: admin123');
+        console.log('[Seeder] Techno Sky Solutions and admin created successfully');
+        console.log('Admin email: techno@admin.com');
+        console.log('Admin password: 12345678');
         await mongoose_1.default.connection.close();
         process.exit(0);
     }
