@@ -32,4 +32,5 @@ const SaleSchema = new Schema<ISale>(
 );
 
 SaleSchema.plugin(tenantPlugin);
+SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, sparse: true });
 export const Sale = model<ISale>('Sale', SaleSchema);

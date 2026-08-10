@@ -37,6 +37,11 @@ class CompanySalesService {
         return Lead_1.Lead.find({ companyId, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] }).sort({ createdAt: -1 });
     }
     static async createLead(companyId, data) {
+        if (data.workflowMessageId) {
+            const existingLead = await Lead_1.Lead.findOne({ companyId, workflowMessageId: data.workflowMessageId });
+            if (existingLead)
+                return existingLead;
+        }
         const lead = await Lead_1.Lead.create({ ...data, companyId });
         await this.syncConvertedSale(companyId, lead);
         return lead;
@@ -62,7 +67,12 @@ class CompanySalesService {
             return [];
         return Sale_1.Sale.find({ companyId, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] }).sort({ saleDate: -1, createdAt: -1 });
     }
-    static createSale(companyId, data) {
+    static async createSale(companyId, data) {
+        if (data.leadId) {
+            const existingSale = await Sale_1.Sale.findOne({ companyId, leadId: data.leadId });
+            if (existingSale)
+                return existingSale;
+        }
         return Sale_1.Sale.create({ ...data, companyId });
     }
     static async updateSale(companyId, id, data) {

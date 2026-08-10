@@ -10,6 +10,7 @@ type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   connected: 'yes' | 'no';
   connectedBy: string;
   isSale: 'yes' | 'no';
+  workflowMessageId?: string;
 };
 
 type SaleInput = Omit<Partial<ISale>, 'companyId'> & {
@@ -54,6 +55,10 @@ export class CompanySalesService {
   }
 
   static async createLead(companyId: string, data: LeadInput) {
+    if (data.workflowMessageId) {
+      const existingLead = await Lead.findOne({ companyId, workflowMessageId: data.workflowMessageId });
+      if (existingLead) return existingLead;
+    }
     const lead = await Lead.create({ ...data, companyId });
     await this.syncConvertedSale(companyId, lead);
     return lead;
@@ -79,7 +84,11 @@ export class CompanySalesService {
     return Sale.find({ companyId, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] }).sort({ saleDate: -1, createdAt: -1 });
   }
 
-  static createSale(companyId: string, data: SaleInput) {
+  static async createSale(companyId: string, data: SaleInput) {
+    if (data.leadId) {
+      const existingSale = await Sale.findOne({ companyId, leadId: data.leadId });
+      if (existingSale) return existingSale;
+    }
     return Sale.create({ ...data, companyId });
   }
 

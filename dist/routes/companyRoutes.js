@@ -32,12 +32,12 @@ router.patch('/employees/:id/status', (0, rbacMiddleware_1.authorizeRoles)(index
 router.delete('/employees/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyAuthController_1.CompanyAuthController.deleteEmployee);
 router.patch('/employees/:id/permissions', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyAuthController_1.CompanyAuthController.updateEmployeePermissions);
 router.get('/leads', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companySales_controller_1.CompanySalesController.getLeads);
-router.post('/leads', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.leadValidation, companySales_controller_1.CompanySalesController.createLead);
-router.patch('/leads/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.leadValidation, companySales_controller_1.CompanySalesController.updateLead);
+router.post('/leads', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.leadValidation, companySales_controller_1.CompanySalesController.createLead);
+router.patch('/leads/:id', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.leadValidation, companySales_controller_1.CompanySalesController.updateLead);
 router.delete('/leads/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySales_controller_1.CompanySalesController.deleteLead);
 router.get('/sales', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companySales_controller_1.CompanySalesController.getSales);
-router.post('/sales', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.saleValidation, companySales_controller_1.CompanySalesController.createSale);
-router.patch('/sales/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.saleValidation, companySales_controller_1.CompanySalesController.updateSale);
+router.post('/sales', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.saleValidation, companySales_controller_1.CompanySalesController.createSale);
+router.patch('/sales/:id', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyValidator_1.saleValidation, companySales_controller_1.CompanySalesController.updateSale);
 router.delete('/sales/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySales_controller_1.CompanySalesController.deleteSale);
 router.post('/groups', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.createGroupValidation, companyAuthController_1.CompanyAuthController.createGroup);
 router.patch('/groups/:groupId', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.updateGroupValidation, companyAuthController_1.CompanyAuthController.updateGroup);

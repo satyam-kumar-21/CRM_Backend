@@ -34,12 +34,12 @@ router.patch('/employees/:id/status', authorizeRoles(Roles.COMPANY_ADMIN), Compa
 router.delete('/employees/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.deleteEmployee);
 router.patch('/employees/:id/permissions', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.updateEmployeePermissions);
 router.get('/leads', authorizeRoles(...companyEmployeeRoles), CompanySalesController.getLeads);
-router.post('/leads', authorizeRoles(Roles.COMPANY_ADMIN), leadValidation, CompanySalesController.createLead);
-router.patch('/leads/:id', authorizeRoles(Roles.COMPANY_ADMIN), leadValidation, CompanySalesController.updateLead);
+router.post('/leads', authorizeRoles(...companyEmployeeRoles), leadValidation, CompanySalesController.createLead);
+router.patch('/leads/:id', authorizeRoles(...companyEmployeeRoles), leadValidation, CompanySalesController.updateLead);
 router.delete('/leads/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteLead);
 router.get('/sales', authorizeRoles(...companyEmployeeRoles), CompanySalesController.getSales);
-router.post('/sales', authorizeRoles(Roles.COMPANY_ADMIN), saleValidation, CompanySalesController.createSale);
-router.patch('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), saleValidation, CompanySalesController.updateSale);
+router.post('/sales', authorizeRoles(...companyEmployeeRoles), saleValidation, CompanySalesController.createSale);
+router.patch('/sales/:id', authorizeRoles(...companyEmployeeRoles), saleValidation, CompanySalesController.updateSale);
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);
 router.post('/groups', authorizeRoles(Roles.COMPANY_ADMIN), createGroupValidation, CompanyAuthController.createGroup);
 router.patch('/groups/:groupId', authorizeRoles(Roles.COMPANY_ADMIN), updateGroupValidation, CompanyAuthController.updateGroup);

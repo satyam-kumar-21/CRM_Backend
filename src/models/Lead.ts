@@ -11,6 +11,7 @@ export interface ILead extends Document {
   connected: 'yes' | 'no';
   connectedBy: string;
   isSale: 'yes' | 'no';
+  workflowMessageId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,9 +26,11 @@ const LeadSchema = new Schema<ILead>(
     connected: { type: String, enum: ['yes', 'no'], default: 'no' },
     connectedBy: { type: String, required: true, trim: true },
     isSale: { type: String, enum: ['yes', 'no'], default: 'no' },
+    workflowMessageId: { type: String, trim: true },
   },
   { timestamps: true }
 );
 
 LeadSchema.plugin(tenantPlugin);
+LeadSchema.index({ companyId: 1, workflowMessageId: 1 }, { unique: true, sparse: true });
 export const Lead = model<ILead>('Lead', LeadSchema);

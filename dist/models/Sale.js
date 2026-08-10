@@ -14,4 +14,5 @@ const SaleSchema = new mongoose_1.Schema({
     saleDate: { type: String, required: true },
 }, { timestamps: true });
 SaleSchema.plugin(tenantPlugin_1.tenantPlugin);
+SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, sparse: true });
 exports.Sale = (0, mongoose_1.model)('Sale', SaleSchema);

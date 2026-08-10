@@ -12,6 +12,8 @@ const LeadSchema = new mongoose_1.Schema({
     connected: { type: String, enum: ['yes', 'no'], default: 'no' },
     connectedBy: { type: String, required: true, trim: true },
     isSale: { type: String, enum: ['yes', 'no'], default: 'no' },
+    workflowMessageId: { type: String, trim: true },
 }, { timestamps: true });
 LeadSchema.plugin(tenantPlugin_1.tenantPlugin);
+LeadSchema.index({ companyId: 1, workflowMessageId: 1 }, { unique: true, sparse: true });
 exports.Lead = (0, mongoose_1.model)('Lead', LeadSchema);

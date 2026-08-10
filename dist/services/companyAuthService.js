@@ -459,10 +459,22 @@ class CompanyAuthService {
         return Message_1.Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
     }
     static async updateMessage(companyId, userId, messageId, content) {
-        const message = await Message_1.Message.findOneAndUpdate({ companyId, _id: messageId, senderId: userId }, { content, editedAt: new Date() }, { new: true, runValidators: true });
+        const message = await Message_1.Message.findOne({ companyId, _id: messageId });
         if (!message)
-            throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
-        return { ...message.toObject(), isMine: true };
+            throw { statusCode: 404, message: 'Message not found.' };
+        const ownsMessage = message.senderId.toString() === userId;
+        const conversationId = message.groupId?.toString() || (message.senderId.toString() === userId ? message.recipientId?.toString() : message.senderId.toString());
+        const isWorkflowUpdate = (() => { try {
+            return JSON.parse(content)?.type === 'lead-workflow';
+        }
+        catch {
+            return false;
+        } })();
+        if (!ownsMessage && (!isWorkflowUpdate || !conversationId || !(await this.canAccessConversation(companyId, userId, index_1.Roles.EMPLOYEE, conversationId)))) {
+            throw { statusCode: 404, message: 'Message not found or you are not allowed to update it.' };
+        }
+        const updated = await Message_1.Message.findOneAndUpdate({ _id: messageId, companyId }, { content, editedAt: new Date() }, { new: true, runValidators: true });
+        return { ...updated.toObject(), isMine: updated.senderId.toString() === userId };
     }
     static async deleteMessage(companyId, userId, messageId) {
         const message = await Message_1.Message.findOneAndDelete({ companyId, _id: messageId, senderId: userId });
