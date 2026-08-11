@@ -16,7 +16,7 @@ import { RemoteSupportService } from './remoteSupportService';
 import { RemoteSupport } from '../models/RemoteSupport';
 import { ProjectService } from './projectService';
 import { AttendanceStatus, LeaveStatus } from '../constants/index';
-import { getBusinessDayEnd, getBusinessDayStart } from '../utils/businessDate';
+import { getBusinessDayEnd, getBusinessDayStart, getBusinessMonthRange, getBusinessMonthString } from '../utils/businessDate';
 
 
 const messageWithSender = (message: IMessage, userId: string) => {
@@ -240,13 +240,53 @@ export class CompanyAuthService {
     ]);
     const todaySalesAmount = todaySalesAgg[0]?.total || 0;
     const todayFailedSales = await Sale.countDocuments({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const todayRemoteSuccessful = await RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const todayRemoteFailed = await RemoteSupport.countDocuments({ companyId, status: 'FAILED', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteSuccessful = await RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', dateTime: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteFailed = await RemoteSupport.countDocuments({ companyId, status: 'FAILED', dateTime: { $gte: todayStart, $lt: todayEnd } });
     const todayRemoteTotal = todayRemoteSuccessful + todayRemoteFailed;
+
+    const currentMonth = getBusinessMonthString();
+    const { start: monthStart, end: monthEnd } = getBusinessMonthRange(currentMonth);
+    const topSalesEmployees = await Sale.aggregate([
+      {
+        $match: {
+          companyId: new Types.ObjectId(companyId),
+          ...nonFailedSaleFilter,
+          saleDate: { $regex: `^${currentMonth}` },
+        },
+      },
+      {
+        $group: {
+          _id: '$connectedBy',
+          totalAmount: { $sum: '$amount' },
+          saleCount: { $sum: 1 },
+        },
+      },
+      { $sort: { totalAmount: -1 } },
+      { $limit: 3 },
+    ]).exec();
+
+    const topTechSupportEmployees = await RemoteSupport.aggregate([
+      {
+        $match: {
+          companyId: new Types.ObjectId(companyId),
+          techSupportEmployeeName: { $nin: ['', null] },
+          dateTime: { $gte: monthStart, $lt: monthEnd },
+        },
+      },
+      {
+        $group: {
+          _id: '$techSupportEmployeeName',
+          remoteCount: { $sum: 1 },
+        },
+      },
+      { $sort: { remoteCount: -1 } },
+      { $limit: 2 },
+    ]).exec();
 
     // Lists for tabular report (limited)
     const todaysLeadsList = await Lead.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
-    const todaysSalesList = await Sale.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysSalesList = await Sale.find({ companyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysFailedSalesList = await Sale.find({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
     const todaysRemoteList = await RemoteSupportService.list(companyId, role, employeeId, { fromDate: todayStart.toISOString(), toDate: todayEnd.toISOString() });
 
     return {
@@ -290,6 +330,8 @@ export class CompanyAuthService {
         activeProjects: projectSummary.active,
         completedProjects: projectSummary.completed,
         pendingProjects: projectSummary.pending,
+        topSalesEmployees: topSalesEmployees.map((item) => ({ name: item._id, totalAmount: item.totalAmount, saleCount: item.saleCount })),
+        topTechSupportEmployees: topTechSupportEmployees.map((item) => ({ name: item._id, remoteCount: item.remoteCount })),
         // today's report values (business day)
         todayReport: {
           businessDate: { start: todayStart.toISOString(), end: todayEnd.toISOString() },
@@ -305,6 +347,7 @@ export class CompanyAuthService {
           lists: {
             leads: todaysLeadsList.map((l) => ({ _id: l._id, name: l.name, country: l.country, system: l.system, createdAt: l.createdAt })),
             sales: todaysSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
+            failed: todaysFailedSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
             remote: todaysRemoteList.map((r: any) => ({ _id: r._id, customerName: r.customerName, salesEmployeeName: r.salesEmployeeName, techSupportEmployeeName: r.techSupportEmployeeName, status: r.status, dateTime: r.dateTime })),
           },
         },
