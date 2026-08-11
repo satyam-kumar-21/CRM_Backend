@@ -25,12 +25,17 @@ export function getBusinessDayStart(value: string | Date = new Date()) {
   const dateString = typeof value === 'string' ? normalizeBusinessDateString(value) : getBusinessDateString(value);
   const [year, month, day] = dateString.split('-').map(Number);
   const businessOffsetMinutes = 5 * 60 + 30;
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - businessOffsetMinutes * 60 * 1000);
+  // Business day starts at 12:01 PM local (Asia/Kolkata) for the given calendar date
+  // Compute UTC time for local 12:01 and subtract timezone offset to get actual UTC timestamp
+  return new Date(Date.UTC(year, month - 1, day, 12, 1, 0) - businessOffsetMinutes * 60 * 1000);
 }
 
 export function getBusinessDayEnd(value: string | Date = new Date()) {
-  const start = getBusinessDayStart(value);
-  return new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const dateString = typeof value === 'string' ? normalizeBusinessDateString(value) : getBusinessDateString(value);
+  const [year, month, day] = dateString.split('-').map(Number);
+  const businessOffsetMinutes = 5 * 60 + 30;
+  // Business day end is next day 11:59 AM local (Asia/Kolkata)
+  return new Date(Date.UTC(year, month - 1, day + 1, 11, 59, 0) - businessOffsetMinutes * 60 * 1000);
 }
 
 export function getBusinessDayRange(value: string | Date = new Date()) {

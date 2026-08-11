@@ -12,6 +12,9 @@ import { Attendance } from '../models/Attendance';
 import { Leave } from '../models/Leave';
 import { Announcement } from '../models/Announcement';
 import { Notification } from '../models/Notification';
+import { RemoteSupportService } from './remoteSupportService';
+import { RemoteSupport } from '../models/RemoteSupport';
+import { ProjectService } from './projectService';
 import { AttendanceStatus, LeaveStatus } from '../constants/index';
 import { getBusinessDayEnd, getBusinessDayStart } from '../utils/businessDate';
 
@@ -223,6 +226,29 @@ export class CompanyAuthService {
       return { id: group._id.toString(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
     }));
 
+    const remoteSupportSummary = await RemoteSupportService.summarize(companyId, role, employeeId);
+    const projectSummary = await ProjectService.summary(companyId, role, employeeId);
+
+    // Today's business-day metrics
+    const todayStart = getBusinessDayStart();
+    const todayEnd = getBusinessDayEnd();
+    const todayLeads = await Lead.countDocuments({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todaySalesCount = await Sale.countDocuments({ companyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todaySalesAgg = await Sale.aggregate([
+      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const todaySalesAmount = todaySalesAgg[0]?.total || 0;
+    const todayFailedSales = await Sale.countDocuments({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteSuccessful = await RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteFailed = await RemoteSupport.countDocuments({ companyId, status: 'FAILED', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteTotal = todayRemoteSuccessful + todayRemoteFailed;
+
+    // Lists for tabular report (limited)
+    const todaysLeadsList = await Lead.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysSalesList = await Sale.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysRemoteList = await RemoteSupportService.list(companyId, role, employeeId, { fromDate: todayStart.toISOString(), toDate: todayEnd.toISOString() });
+
     return {
       company: {
         id: company?._id,
@@ -260,12 +286,36 @@ export class CompanyAuthService {
         myFailedSales: employeeFailedSales,
         myConnectedLeads: employeeConnectedLeads,
         myPendingLeads: employeePendingLeads,
+        remoteSupportTickets: remoteSupportSummary.total,
+        activeProjects: projectSummary.active,
+        completedProjects: projectSummary.completed,
+        pendingProjects: projectSummary.pending,
+        // today's report values (business day)
+        todayReport: {
+          businessDate: { start: todayStart.toISOString(), end: todayEnd.toISOString() },
+          leads: todayLeads,
+          salesCount: todaySalesCount,
+          salesAmount: todaySalesAmount,
+          failedSales: todayFailedSales,
+          remote: {
+            successful: todayRemoteSuccessful,
+            failed: todayRemoteFailed,
+            total: todayRemoteTotal,
+          },
+          lists: {
+            leads: todaysLeadsList.map((l) => ({ _id: l._id, name: l.name, country: l.country, system: l.system, createdAt: l.createdAt })),
+            sales: todaysSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
+            remote: todaysRemoteList.map((r: any) => ({ _id: r._id, customerName: r.customerName, salesEmployeeName: r.salesEmployeeName, techSupportEmployeeName: r.techSupportEmployeeName, status: r.status, dateTime: r.dateTime })),
+          },
+        },
       },
       groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
       chatEmployees,
       recentMessages,
       notifications: { unread: unreadNotificationCount },
       announcements: { unread: unreadAnnouncementCount },
+      remoteSupportSummary,
+      projectSummary,
       leave: {
         present: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.PRESENT }),
         absent: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.ABSENT }),
