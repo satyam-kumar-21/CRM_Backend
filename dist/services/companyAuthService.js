@@ -12,6 +12,8 @@ const index_1 = require("../constants/index");
 const jwt_1 = require("../utils/jwt");
 const Group_1 = require("../models/Group");
 const Message_1 = require("../models/Message");
+const Lead_1 = require("../models/Lead");
+const Sale_1 = require("../models/Sale");
 const Attendance_1 = require("../models/Attendance");
 const Leave_1 = require("../models/Leave");
 const Announcement_1 = require("../models/Announcement");
@@ -155,6 +157,32 @@ class CompanyAuthService {
             recipientId: employee._id,
             isRead: false,
         });
+        const nonFailedSaleFilter = { failed: { $ne: true } };
+        const companyTotalLeads = await Lead_1.Lead.countDocuments({ companyId });
+        const companyConnectedLeads = await Lead_1.Lead.countDocuments({ companyId, connected: 'yes' });
+        const companyPendingLeads = await Lead_1.Lead.countDocuments({ companyId, connected: 'no' });
+        const companyTotalSales = await Sale_1.Sale.countDocuments({ companyId, ...nonFailedSaleFilter });
+        const companyFailedSales = await Sale_1.Sale.countDocuments({ companyId, failed: true });
+        const companyRevenueResult = await Sale_1.Sale.aggregate([
+            { $match: { companyId: new mongoose_1.Types.ObjectId(companyId), ...nonFailedSaleFilter } },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]);
+        const companyRevenue = companyRevenueResult[0]?.total || 0;
+        const employeeLeadFilter = {
+            companyId,
+            $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }],
+        };
+        const employeeLeads = await Lead_1.Lead.countDocuments(employeeLeadFilter);
+        const employeeConnectedLeads = await Lead_1.Lead.countDocuments({ ...employeeLeadFilter, connected: 'yes' });
+        const employeePendingLeads = await Lead_1.Lead.countDocuments({ ...employeeLeadFilter, connected: 'no' });
+        const employeeSalesFilter = { companyId, ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] };
+        const employeeSales = await Sale_1.Sale.countDocuments(employeeSalesFilter);
+        const employeeFailedSales = await Sale_1.Sale.countDocuments({ companyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
+        const employeeRevenueResult = await Sale_1.Sale.aggregate([
+            { $match: { companyId: new mongoose_1.Types.ObjectId(companyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]);
+        const employeeRevenue = employeeRevenueResult[0]?.total || 0;
         const groups = await Group_1.Group.find(isAdmin ? { companyId } : {
             companyId,
             $or: [
@@ -211,6 +239,18 @@ class CompanyAuthService {
                 totalEmployees: employeeCount,
                 activeGroups: groups.length,
                 recentMessages: recentMessages.length,
+                totalLeads: companyTotalLeads,
+                totalSales: companyTotalSales,
+                totalRevenue: companyRevenue,
+                failedSales: companyFailedSales,
+                connectedLeads: companyConnectedLeads,
+                pendingLeads: companyPendingLeads,
+                myLeads: employeeLeads,
+                mySales: employeeSales,
+                myRevenue: employeeRevenue,
+                myFailedSales: employeeFailedSales,
+                myConnectedLeads: employeeConnectedLeads,
+                myPendingLeads: employeePendingLeads,
             },
             groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
             chatEmployees,
@@ -218,10 +258,6 @@ class CompanyAuthService {
             notifications: { unread: unreadNotificationCount },
             announcements: { unread: unreadAnnouncementCount },
             leave: {
-                pendingRequests: isAdmin ? pendingLeaveCount : 0,
-                myLeaveRequests: isAdmin ? 0 : pendingLeaveCount,
-            },
-            attendanceSummary: {
                 present: await Attendance_1.Attendance.countDocuments({ companyId, date: { $gte: (0, businessDate_1.getBusinessDayStart)(), $lt: (0, businessDate_1.getBusinessDayEnd)() }, status: index_2.AttendanceStatus.PRESENT }),
                 absent: await Attendance_1.Attendance.countDocuments({ companyId, date: { $gte: (0, businessDate_1.getBusinessDayStart)(), $lt: (0, businessDate_1.getBusinessDayEnd)() }, status: index_2.AttendanceStatus.ABSENT }),
                 holiday: await Attendance_1.Attendance.countDocuments({ companyId, date: { $gte: (0, businessDate_1.getBusinessDayStart)(), $lt: (0, businessDate_1.getBusinessDayEnd)() }, status: index_2.AttendanceStatus.HOLIDAY }),

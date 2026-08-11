@@ -6,6 +6,8 @@ import { Roles, CompanyStatus } from '../constants/index';
 import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
 import { Group } from '../models/Group';
 import { Message, IMessage } from '../models/Message';
+import { Lead } from '../models/Lead';
+import { Sale } from '../models/Sale';
 import { Attendance } from '../models/Attendance';
 import { Leave } from '../models/Leave';
 import { Announcement } from '../models/Announcement';
@@ -160,6 +162,35 @@ export class CompanyAuthService {
       recipientId: employee._id,
       isRead: false,
     });
+
+    const nonFailedSaleFilter: any = { failed: { $ne: true } };
+    const companyTotalLeads = await Lead.countDocuments({ companyId });
+    const companyConnectedLeads = await Lead.countDocuments({ companyId, connected: 'yes' });
+    const companyPendingLeads = await Lead.countDocuments({ companyId, connected: 'no' });
+    const companyTotalSales = await Sale.countDocuments({ companyId, ...nonFailedSaleFilter });
+    const companyFailedSales = await Sale.countDocuments({ companyId, failed: true });
+    const companyRevenueResult = await Sale.aggregate([
+      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const companyRevenue = companyRevenueResult[0]?.total || 0;
+
+    const employeeLeadFilter = {
+      companyId,
+      $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }],
+    };
+    const employeeLeads = await Lead.countDocuments(employeeLeadFilter);
+    const employeeConnectedLeads = await Lead.countDocuments({ ...employeeLeadFilter, connected: 'yes' });
+    const employeePendingLeads = await Lead.countDocuments({ ...employeeLeadFilter, connected: 'no' });
+    const employeeSalesFilter = { companyId, ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] };
+    const employeeSales = await Sale.countDocuments(employeeSalesFilter);
+    const employeeFailedSales = await Sale.countDocuments({ companyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
+    const employeeRevenueResult = await Sale.aggregate([
+      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const employeeRevenue = employeeRevenueResult[0]?.total || 0;
+
     const groups = await Group.find(isAdmin ? { companyId } : {
       companyId,
       $or: [
@@ -217,6 +248,18 @@ export class CompanyAuthService {
         totalEmployees: employeeCount,
         activeGroups: groups.length,
         recentMessages: recentMessages.length,
+        totalLeads: companyTotalLeads,
+        totalSales: companyTotalSales,
+        totalRevenue: companyRevenue,
+        failedSales: companyFailedSales,
+        connectedLeads: companyConnectedLeads,
+        pendingLeads: companyPendingLeads,
+        myLeads: employeeLeads,
+        mySales: employeeSales,
+        myRevenue: employeeRevenue,
+        myFailedSales: employeeFailedSales,
+        myConnectedLeads: employeeConnectedLeads,
+        myPendingLeads: employeePendingLeads,
       },
       groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
       chatEmployees,
@@ -224,10 +267,6 @@ export class CompanyAuthService {
       notifications: { unread: unreadNotificationCount },
       announcements: { unread: unreadAnnouncementCount },
       leave: {
-        pendingRequests: isAdmin ? pendingLeaveCount : 0,
-        myLeaveRequests: isAdmin ? 0 : pendingLeaveCount,
-      },
-      attendanceSummary: {
         present: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.PRESENT }),
         absent: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.ABSENT }),
         holiday: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.HOLIDAY }),
