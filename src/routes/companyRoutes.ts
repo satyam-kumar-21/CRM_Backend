@@ -3,12 +3,13 @@ import { CompanyAuthController } from '../controllers/companyAuthController';
 import { authenticate } from '../middlewares/authMiddleware';
 import { authorizeRoles } from '../middlewares/rbacMiddleware';
 import { enforceTenant } from '../middlewares/tenantMiddleware';
-import { companyLoginValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, saleValidation } from '../validators/companyValidator';
+import { companyLoginValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, saleValidation, markSaleFailedValidation, createLeaveValidation } from '../validators/companyValidator';
 import { CompanySalesController } from '../controllers/companySales.controller';
 import { Roles } from '../constants/index';
 import { AttendanceController } from '../controllers/attendanceController';
 import { AnnouncementController } from '../controllers/announcementController';
 import { LeaveController } from '../controllers/leaveController';
+import { NotificationController } from '../controllers/notificationController';
 
 const router = Router();
 
@@ -24,9 +25,13 @@ router.get('/attendance', authorizeRoles(...companyEmployeeRoles), AttendanceCon
 router.get('/attendance/employees', authorizeRoles(Roles.COMPANY_ADMIN), AttendanceController.employees);
 router.get('/announcements', authorizeRoles(...companyEmployeeRoles), AnnouncementController.list);
 router.post('/announcements', authorizeRoles(Roles.COMPANY_ADMIN), AnnouncementController.create);
+router.patch('/announcements/:id/read', authorizeRoles(...companyEmployeeRoles), AnnouncementController.markRead);
 router.delete('/announcements/:id', authorizeRoles(Roles.COMPANY_ADMIN), AnnouncementController.remove);
 router.get('/leave', authorizeRoles(...companyEmployeeRoles), LeaveController.list);
+router.post('/leave', authorizeRoles(...companyEmployeeRoles), createLeaveValidation, LeaveController.create);
 router.patch('/leave/:id/status', authorizeRoles(Roles.COMPANY_ADMIN), LeaveController.updateStatus);
+router.get('/notifications', authorizeRoles(...companyEmployeeRoles), NotificationController.list);
+router.patch('/notifications/:id/read', authorizeRoles(...companyEmployeeRoles), NotificationController.markRead);
 router.get('/employees', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.getEmployees);
 router.post('/employees', authorizeRoles(Roles.COMPANY_ADMIN), createEmployeeValidation, CompanyAuthController.createEmployee);
 router.patch('/employees/:id', authorizeRoles(Roles.COMPANY_ADMIN), updateEmployeeValidation, CompanyAuthController.updateEmployee);
@@ -40,6 +45,7 @@ router.delete('/leads/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesCon
 router.get('/sales', authorizeRoles(...companyEmployeeRoles), CompanySalesController.getSales);
 router.post('/sales', authorizeRoles(...companyEmployeeRoles), saleValidation, CompanySalesController.createSale);
 router.patch('/sales/:id', authorizeRoles(...companyEmployeeRoles), saleValidation, CompanySalesController.updateSale);
+router.patch('/sales/:id/failed', authorizeRoles(Roles.COMPANY_ADMIN), markSaleFailedValidation, CompanySalesController.markSaleFailed);
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);
 router.post('/groups', authorizeRoles(Roles.COMPANY_ADMIN), createGroupValidation, CompanyAuthController.createGroup);
 router.patch('/groups/:groupId', authorizeRoles(Roles.COMPANY_ADMIN), updateGroupValidation, CompanyAuthController.updateGroup);

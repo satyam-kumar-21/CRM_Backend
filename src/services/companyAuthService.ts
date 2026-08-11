@@ -7,7 +7,11 @@ import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../uti
 import { Group } from '../models/Group';
 import { Message, IMessage } from '../models/Message';
 import { Attendance } from '../models/Attendance';
-import { AttendanceStatus } from '../constants/index';
+import { Leave } from '../models/Leave';
+import { Announcement } from '../models/Announcement';
+import { Notification } from '../models/Notification';
+import { AttendanceStatus, LeaveStatus } from '../constants/index';
+import { getBusinessDayEnd, getBusinessDayStart } from '../utils/businessDate';
 
 const messageWithSender = (message: IMessage, userId: string) => {
   const sender = message.senderId as unknown as { _id?: unknown; name?: string };
@@ -94,10 +98,8 @@ export class CompanyAuthService {
 
     employee.refreshTokens.push(refreshToken);
     await employee.save();
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayStart = getBusinessDayStart();
+    const dayEnd = getBusinessDayEnd();
     await Attendance.findOneAndUpdate(
       { companyId: company._id, employeeId: employee._id, date: { $gte: dayStart, $lt: dayEnd } },
       { $setOnInsert: { date: dayStart, checkIn: new Date(), status: AttendanceStatus.PRESENT, workHours: 0 } },
@@ -121,10 +123,8 @@ export class CompanyAuthService {
   }
 
   static async recordLogout(employeeId: string, companyId: string) {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayStart = getBusinessDayStart();
+    const dayEnd = getBusinessDayEnd();
     const attendance = await Attendance.findOne({ companyId, employeeId, date: { $gte: dayStart, $lt: dayEnd } });
     if (!attendance || !attendance.checkIn) return;
     const checkOut = new Date();
@@ -141,6 +141,19 @@ export class CompanyAuthService {
     }
     const employeeCount = await Employee.countDocuments({ companyId });
     const isAdmin = role === Roles.COMPANY_ADMIN;
+    const pendingLeaveCount = isAdmin
+      ? await Leave.countDocuments({ companyId, status: LeaveStatus.PENDING })
+      : await Leave.countDocuments({ companyId, employeeId });
+    const unreadAnnouncementCount = await Announcement.countDocuments({
+      companyId,
+      $or: [{ targetRoles: { $size: 0 } }, { targetRoles: role }],
+      readBy: { $ne: employee._id },
+    });
+    const unreadNotificationCount = await Notification.countDocuments({
+      companyId,
+      recipientId: employee._id,
+      isRead: false,
+    });
     const groups = await Group.find(isAdmin ? { companyId } : {
       companyId,
       $or: [
@@ -202,6 +215,12 @@ export class CompanyAuthService {
       groups: groups.map((group) => ({ ...group.toObject(), ...groupMetadata.find((metadata) => metadata.id === group._id.toString()) })),
       chatEmployees,
       recentMessages,
+      notifications: { unread: unreadNotificationCount },
+      announcements: { unread: unreadAnnouncementCount },
+      leave: {
+        pendingRequests: isAdmin ? pendingLeaveCount : 0,
+        myLeaveRequests: isAdmin ? 0 : pendingLeaveCount,
+      },
     };
   }
 

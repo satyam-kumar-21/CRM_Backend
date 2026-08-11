@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import { AuthenticatedRequest } from '../middlewares/authMiddleware';
 import { ApiResponse } from '../utils/responseHandler';
 import { CompanySalesService } from '../services/companySalesService';
+import { Employee } from '../models/Employee';
 
 function validate(req: AuthenticatedRequest, res: Response) {
   const errors = validationResult(req);
@@ -35,7 +36,11 @@ export class CompanySalesController {
   }
 
   static async getSales(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try { ApiResponse.success(res, 'Sales fetched successfully', await CompanySalesService.getSales(req.user!.companyId!, req.user!.role === 'COMPANY_ADMIN' ? undefined : req.user!.id)); } catch (error) { next(error); }
+    try {
+      const failed = req.query.failed === 'true';
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      ApiResponse.success(res, 'Sales fetched successfully', await CompanySalesService.getSales(req.user!.companyId!, req.user!.role === 'COMPANY_ADMIN' ? undefined : req.user!.id, failed));
+    } catch (error) { next(error); }
   }
 
   static async createSale(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -49,6 +54,15 @@ export class CompanySalesController {
     try {
       if (!validate(req, res)) return;
       ApiResponse.success(res, 'Sale updated successfully', await CompanySalesService.updateSale(req.user!.companyId!, req.params.id, req.body));
+    } catch (error) { next(error); }
+  }
+
+  static async markSaleFailed(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      if (!validate(req, res)) return;
+      const admin = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');
+      const failedByName = admin?.name || 'Admin';
+      ApiResponse.success(res, 'Sale marked as failed successfully', await CompanySalesService.markSaleFailed(req.user!.companyId!, req.params.id, req.body.failedReason, req.user!.id, failedByName), 200);
     } catch (error) { next(error); }
   }
 

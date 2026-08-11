@@ -11,6 +11,10 @@ export interface ILeave extends Document {
   reason: string;
   status: LeaveStatus;
   approvedBy?: Schema.Types.ObjectId;
+  approvedByName?: string;
+  rejectedBy?: Schema.Types.ObjectId;
+  rejectedByName?: string;
+  rejectReason?: string;
 }
 
 const LeaveSchema = new Schema<ILeave>(
@@ -22,6 +26,10 @@ const LeaveSchema = new Schema<ILeave>(
     reason: { type: String, required: true },
     status: { type: String, enum: Object.values(LeaveStatus), default: LeaveStatus.PENDING },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'Employee' },
+    approvedByName: { type: String, default: '' },
+    rejectedBy: { type: Schema.Types.ObjectId, ref: 'Employee' },
+    rejectedByName: { type: String, default: '' },
+    rejectReason: { type: String, default: '' },
   },
   { timestamps: true }
 );

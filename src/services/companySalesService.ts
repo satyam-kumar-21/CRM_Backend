@@ -1,6 +1,7 @@
 import { Lead, ILead } from '../models/Lead';
 import { Sale, ISale } from '../models/Sale';
 import { Employee } from '../models/Employee';
+import { getBusinessDateString } from '../utils/businessDate';
 
 type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   name: string;
@@ -43,7 +44,7 @@ export class CompanySalesService {
       leadId: lead._id,
       amount: 0,
       paymentMethod: 'Other',
-      saleDate: new Date().toISOString().slice(0, 10),
+      saleDate: getBusinessDateString(),
     });
   }
 
@@ -77,11 +78,19 @@ export class CompanySalesService {
     return { id };
   }
 
-  static async getSales(companyId: string, employeeId?: string) {
-    if (!employeeId) return Sale.find({ companyId }).sort({ saleDate: -1, createdAt: -1 });
+  static async getSales(companyId: string, employeeId?: string, failed = false) {
+    const statusQuery: any = failed
+      ? { failed: true }
+      : { $or: [{ failed: false }, { failed: { $exists: false } }] };
+
+    if (!employeeId) return Sale.find({ companyId, ...statusQuery }).sort({ saleDate: -1, createdAt: -1 });
     const employee = await Employee.findOne({ companyId, _id: employeeId }).select('name employeeId');
     if (!employee) return [];
-    return Sale.find({ companyId, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] }).sort({ saleDate: -1, createdAt: -1 });
+    return Sale.find({
+      companyId,
+      ...statusQuery,
+      $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }],
+    }).sort({ saleDate: -1, createdAt: -1 });
   }
 
   static async createSale(companyId: string, data: SaleInput) {
@@ -94,6 +103,23 @@ export class CompanySalesService {
 
   static async updateSale(companyId: string, id: string, data: Partial<SaleInput>) {
     const sale = await Sale.findOneAndUpdate({ companyId, _id: id }, data, { new: true, runValidators: true });
+    if (!sale) throw { statusCode: 404, message: 'Sale not found.' };
+    return sale;
+  }
+
+  static async markSaleFailed(companyId: string, id: string, failedReason: string, failedById: string, failedByName: string) {
+    if (!failedReason || !failedReason.trim()) throw { statusCode: 400, message: 'Failed reason is required.' };
+    const sale = await Sale.findOneAndUpdate(
+      { companyId, _id: id },
+      {
+        failed: true,
+        failedReason: failedReason.trim(),
+        failedAt: new Date(),
+        failedBy: failedById,
+        failedByName,
+      },
+      { new: true, runValidators: true }
+    );
     if (!sale) throw { statusCode: 404, message: 'Sale not found.' };
     return sale;
   }

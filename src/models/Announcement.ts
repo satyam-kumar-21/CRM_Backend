@@ -7,6 +7,9 @@ export interface IAnnouncement extends Document {
   content: string;
   authorId: Schema.Types.ObjectId;
   targetRoles: string[];
+  readBy: Schema.Types.ObjectId[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const AnnouncementSchema = new Schema<IAnnouncement>(
@@ -15,6 +18,7 @@ const AnnouncementSchema = new Schema<IAnnouncement>(
     content: { type: String, required: true },
     authorId: { type: Schema.Types.ObjectId, ref: 'Employee', required: true },
     targetRoles: [{ type: String }],
+    readBy: [{ type: Schema.Types.ObjectId, ref: 'Employee', default: [] }],
   },
   { timestamps: true }
 );

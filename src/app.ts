@@ -8,6 +8,7 @@ import { errorHandler } from './middlewares/errorMiddleware';
 import companyRoutes from './routes/companyRoutes';
 
 const app: Application = express();
+app.set('etag', false);
 
 // Security Middlewares
 app.use(helmet());

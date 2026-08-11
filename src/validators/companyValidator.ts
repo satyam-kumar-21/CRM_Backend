@@ -79,3 +79,19 @@ export const saleValidation = [
   body('paymentMethod').isIn(['Card', 'Check', 'Wire Transfer', 'Cash', 'Other']).withMessage('Valid payment method is required'),
   body('saleDate').isISO8601().withMessage('Valid sale date is required'),
 ];
+
+export const markSaleFailedValidation = [
+  body('failed').isBoolean().withMessage('Failed status is required').custom((value) => value === true).withMessage('Sale must be marked as failed'),
+  body('failedReason').trim().notEmpty().withMessage('Failed reason is required when marking a sale failed'),
+];
+
+export const createLeaveValidation = [
+  body('leaveType').isIn(['CASUAL', 'SICK', 'MATERNITY', 'ANNUAL']).withMessage('Valid leave type is required'),
+  body('startDate').isISO8601().withMessage('Valid start date is required'),
+  body('endDate')
+    .isISO8601()
+    .withMessage('Valid end date is required')
+    .custom((value, { req }) => new Date(value) >= new Date(req.body.startDate))
+    .withMessage('End date must be the same or after the start date'),
+  body('reason').trim().notEmpty().withMessage('Leave reason is required'),
+];

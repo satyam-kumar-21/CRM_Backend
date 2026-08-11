@@ -13,6 +13,11 @@ export interface ISale extends Document {
   amount: number;
   paymentMethod: PaymentMethod;
   saleDate: string;
+  failed: boolean;
+  failedReason: string;
+  failedAt?: Date | null;
+  failedBy?: Schema.Types.ObjectId | null;
+  failedByName: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +32,11 @@ const SaleSchema = new Schema<ISale>(
     amount: { type: Number, required: true, min: 0 },
     paymentMethod: { type: String, enum: ['Card', 'Check', 'Wire Transfer', 'Cash', 'Other'], required: true },
     saleDate: { type: String, required: true },
+    failed: { type: Boolean, default: false },
+    failedReason: { type: String, default: 'N/A' },
+    failedAt: { type: Date, default: null },
+    failedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
+    failedByName: { type: String, default: 'N/A' },
   },
   { timestamps: true }
 );
