@@ -1,0 +1,24 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RemoteSupport = void 0;
+const mongoose_1 = require("mongoose");
+const tenantPlugin_1 = require("../plugins/tenantPlugin");
+const RemoteSupportSchema = new mongoose_1.Schema({
+    leadId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Lead', required: false },
+    customerName: { type: String, required: true, trim: true },
+    customerContact: { type: String, required: true, trim: true },
+    salesEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    salesEmployeeName: { type: String, required: true, trim: true },
+    techSupportEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: false },
+    techSupportEmployeeName: { type: String, trim: true, default: '' },
+    dateTime: { type: Date, required: true },
+    issueReason: { type: String, required: true, trim: true },
+    status: { type: String, enum: ['PENDING', 'IN_PROGRESS', 'SUCCESSFUL', 'FAILED'], default: 'PENDING' },
+    failedReason: { type: String, default: '' },
+    failedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: false },
+    failedByName: { type: String, trim: true, default: '' },
+    failedAt: { type: Date, default: null },
+}, { timestamps: true });
+RemoteSupportSchema.plugin(tenantPlugin_1.tenantPlugin);
+RemoteSupportSchema.index({ companyId: 1, dateTime: -1 });
+exports.RemoteSupport = (0, mongoose_1.model)('RemoteSupport', RemoteSupportSchema);
