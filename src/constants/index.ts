@@ -30,6 +30,7 @@ export enum AttendanceStatus {
   ABSENT = 'ABSENT',
   LATE = 'LATE',
   HALF_DAY = 'HALF_DAY',
+  HOLIDAY = 'HOLIDAY',
 }
 
 export enum LeaveStatus {

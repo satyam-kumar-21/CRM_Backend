@@ -12,14 +12,61 @@ export class LeaveController {
   static async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const isAdmin = req.user!.role === Roles.COMPANY_ADMIN;
-      const query: Record<string, unknown> = { companyId: req.user!.companyId };
-      if (!isAdmin) query.employeeId = req.user!.id;
-      if (req.query.month) {
-        const month = String(req.query.month);
-        const range = getBusinessMonthRange(month);
-        query.startDate = { $gte: range.start, $lt: range.end };
+      const query: Record<string, any> = { companyId: req.user!.companyId };
+      if (!isAdmin) {
+        query.employeeId = req.user!.id;
+      } else {
+        // Admin filters/search
+        if (req.query.status) {
+          const status = String(req.query.status).toUpperCase();
+          query.status = status;
+        }
+        if (req.query.leaveType) {
+          query.leaveType = String(req.query.leaveType);
+        }
+        if (req.query.employeeId) {
+          query.employeeId = req.query.employeeId;
+        }
+        if (req.query.search) {
+          const search = String(req.query.search).trim();
+          if (search) {
+            // find matching employees by name or employeeId
+            const matched = await Employee.find({
+              companyId: req.user!.companyId,
+              $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { employeeId: { $regex: `^${search}`, $options: 'i' } },
+              ],
+            }).select('_id');
+            const ids = matched.map((m) => m._id);
+            query.employeeId = { $in: ids.length ? ids : ['000000000000000000000000'] };
+          }
+        }
+        if (req.query.from || req.query.to) {
+          const range: any = {};
+          if (req.query.from) range.$gte = new Date(String(req.query.from));
+          if (req.query.to) range.$lte = new Date(String(req.query.to));
+          if (!query.startDate) query.startDate = {};
+          query.startDate = Object.assign(query.startDate, range);
+        }
       }
+
       const records = await Leave.find(query).populate('employeeId', 'name employeeId role').sort({ startDate: -1 });
+      // If an employee is viewing their leave list, mark leave-related notifications as read
+      if (!isAdmin) {
+        await Notification.updateMany(
+          {
+            companyId: req.user!.companyId,
+            recipientId: req.user!.id,
+            isRead: false,
+            $or: [
+              { link: /leave/ },
+              { title: /^Leave/ },
+            ],
+          },
+          { $set: { isRead: true } }
+        );
+      }
       ApiResponse.success(res, 'Leave records fetched successfully', records);
     } catch (error) { next(error); }
   }

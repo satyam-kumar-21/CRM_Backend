@@ -13,6 +13,7 @@ import { Notification } from '../models/Notification';
 import { AttendanceStatus, LeaveStatus } from '../constants/index';
 import { getBusinessDayEnd, getBusinessDayStart } from '../utils/businessDate';
 
+
 const messageWithSender = (message: IMessage, userId: string) => {
   const sender = message.senderId as unknown as { _id?: unknown; name?: string };
   return {
@@ -79,6 +80,11 @@ export class CompanyAuthService {
     }
     if (!employee || employee.isSuspended) {
       throw { statusCode: 401, message: 'Invalid employee credentials or account suspended.' };
+    }
+
+    // If employee login is disabled for company, block non-admins
+    if (company.settings && company.settings.employeeLoginEnabled === false && employee.role !== Roles.COMPANY_ADMIN) {
+      throw { statusCode: 403, message: 'Employee login is currently disabled by Admin.' };
     }
 
     const isMatch = await bcrypt.compare(password, employee.passwordHash);
@@ -220,6 +226,12 @@ export class CompanyAuthService {
       leave: {
         pendingRequests: isAdmin ? pendingLeaveCount : 0,
         myLeaveRequests: isAdmin ? 0 : pendingLeaveCount,
+      },
+      attendanceSummary: {
+        present: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.PRESENT }),
+        absent: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.ABSENT }),
+        holiday: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.HOLIDAY }),
+        totalEmployees: employeeCount,
       },
     };
   }

@@ -77,3 +77,15 @@ export const emitDirectEvent = (participantIds: string[], event: string, payload
 export const emitUserEvent = (userIds: string[], event: string, payload: unknown) => {
   userIds.forEach((id) => io?.to(`user:${id}`).emit(event, payload));
 };
+
+export const disconnectUser = async (userId: string) => {
+  try {
+    if (!io) return;
+    const sockets = await io.in(`user:${userId}`).fetchSockets();
+    for (const s of sockets) {
+      s.disconnect(true);
+    }
+  } catch (err) {
+    // ignore
+  }
+};

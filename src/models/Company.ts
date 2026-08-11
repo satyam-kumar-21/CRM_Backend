@@ -15,6 +15,12 @@ export interface ICompany extends Document {
   employeeLimit: number;
   branchLimit: number;
   planExpiryDate: Date;
+  settings?: {
+    companyName?: string;
+    employeeLoginEnabled?: boolean;
+    routePermissions?: { [key: string]: boolean };
+    holidays?: { name: string; date: Date }[];
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +40,12 @@ const CompanySchema = new Schema<ICompany>(
     employeeLimit: { type: Number, default: 50 },
     branchLimit: { type: Number, default: 2 },
     planExpiryDate: { type: Date, required: true },
+    settings: {
+      companyName: { type: String, default: '' },
+      employeeLoginEnabled: { type: Boolean, default: true },
+      routePermissions: { type: Map, of: Boolean, default: {} },
+      holidays: [{ name: { type: String }, date: { type: Date } }],
+    },
   },
   { timestamps: true }
 );
