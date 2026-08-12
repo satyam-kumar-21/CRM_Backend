@@ -225,10 +225,13 @@ class CompanyAuthController {
                 return;
             }
             const message = await companyAuthService_1.CompanyAuthService.updateMessage(req.user.companyId, req.user.id, req.params.messageId, req.body.content);
-            if (message.groupId)
+            if (message.groupId) {
                 (0, socket_1.emitConversationEvent)(message.groupId.toString(), 'message:updated', message);
-            else if (message.recipientId)
-                (0, socket_1.emitDirectEvent)([req.user.id, message.recipientId.toString()], 'message:updated', message);
+            }
+            else {
+                const participants = [message.senderId?.toString(), message.recipientId?.toString(), req.user.id].filter(Boolean);
+                (0, socket_1.emitDirectEvent)(Array.from(new Set(participants)), 'message:updated', message);
+            }
             responseHandler_1.ApiResponse.success(res, 'Message updated successfully', message);
         }
         catch (error) {

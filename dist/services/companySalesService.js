@@ -43,7 +43,7 @@ class CompanySalesService {
             if (existingLead)
                 return existingLead;
         }
-        const lead = await Lead_1.Lead.create({ ...data, companyId });
+        const lead = await Lead_1.Lead.create({ ...data, status: data.status || 'OPEN', completionReason: data.completionReason || '', companyId });
         await this.syncConvertedSale(companyId, lead);
         return lead;
     }

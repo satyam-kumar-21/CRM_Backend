@@ -237,8 +237,12 @@ export class CompanyAuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }
       const message = await CompanyAuthService.updateMessage(req.user!.companyId!, req.user!.id, req.params.messageId, req.body.content);
-      if (message.groupId) emitConversationEvent(message.groupId.toString(), 'message:updated', message);
-      else if (message.recipientId) emitDirectEvent([req.user!.id, message.recipientId.toString()], 'message:updated', message);
+      if (message.groupId) {
+        emitConversationEvent(message.groupId.toString(), 'message:updated', message);
+      } else {
+        const participants = [message.senderId?.toString(), message.recipientId?.toString(), req.user!.id].filter(Boolean) as string[];
+        emitDirectEvent(Array.from(new Set(participants)), 'message:updated', message);
+      }
       ApiResponse.success(res, 'Message updated successfully', message);
     } catch (error) { next(error); }
   }

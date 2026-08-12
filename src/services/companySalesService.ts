@@ -11,6 +11,8 @@ type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   connected: 'yes' | 'no';
   connectedBy: string;
   isSale: 'yes' | 'no';
+  status?: 'OPEN' | 'COMPLETED';
+  completionReason?: string;
   workflowMessageId?: string;
 };
 
@@ -60,7 +62,7 @@ export class CompanySalesService {
       const existingLead = await Lead.findOne({ companyId, workflowMessageId: data.workflowMessageId });
       if (existingLead) return existingLead;
     }
-    const lead = await Lead.create({ ...data, companyId });
+    const lead = await Lead.create({ ...data, status: data.status || 'OPEN', completionReason: data.completionReason || '', companyId });
     await this.syncConvertedSale(companyId, lead);
     return lead;
   }

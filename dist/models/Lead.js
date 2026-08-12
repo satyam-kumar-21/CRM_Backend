@@ -12,6 +12,8 @@ const LeadSchema = new mongoose_1.Schema({
     connected: { type: String, enum: ['yes', 'no'], default: 'no' },
     connectedBy: { type: String, required: true, trim: true },
     isSale: { type: String, enum: ['yes', 'no'], default: 'no' },
+    status: { type: String, enum: ['OPEN', 'COMPLETED'], default: 'OPEN' },
+    completionReason: { type: String, default: '' },
     workflowMessageId: { type: String, trim: true },
 }, { timestamps: true });
 LeadSchema.plugin(tenantPlugin_1.tenantPlugin);

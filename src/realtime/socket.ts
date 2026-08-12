@@ -71,11 +71,18 @@ export const emitConversationEvent = (conversationId: string, event: string, pay
 };
 
 export const emitDirectEvent = (participantIds: string[], event: string, payload: unknown) => {
-  participantIds.forEach((id) => io?.to(`conversation:${id}`).emit(event, payload));
+  participantIds.forEach((id) => {
+    io?.to(`user:${id}`).emit(event, payload);
+    io?.to(`conversation:${id}`).emit(event, payload);
+  });
 };
 
 export const emitUserEvent = (userIds: string[], event: string, payload: unknown) => {
   userIds.forEach((id) => io?.to(`user:${id}`).emit(event, payload));
+};
+
+export const emitCompanyEvent = (event: string, payload: unknown) => {
+  io?.emit(event, payload);
 };
 
 export const disconnectUser = async (userId: string) => {

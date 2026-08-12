@@ -11,6 +11,8 @@ export interface ILead extends Document {
   connected: 'yes' | 'no';
   connectedBy: string;
   isSale: 'yes' | 'no';
+  status: 'OPEN' | 'COMPLETED';
+  completionReason?: string;
   workflowMessageId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -26,6 +28,8 @@ const LeadSchema = new Schema<ILead>(
     connected: { type: String, enum: ['yes', 'no'], default: 'no' },
     connectedBy: { type: String, required: true, trim: true },
     isSale: { type: String, enum: ['yes', 'no'], default: 'no' },
+    status: { type: String, enum: ['OPEN', 'COMPLETED'], default: 'OPEN' },
+    completionReason: { type: String, default: '' },
     workflowMessageId: { type: String, trim: true },
   },
   { timestamps: true }

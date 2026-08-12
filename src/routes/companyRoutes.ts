@@ -63,8 +63,12 @@ router.patch('/sales/:id', authorizeRoles(...companyEmployeeRoles), routePermiss
 router.patch('/sales/:id/failed', authorizeRoles(Roles.COMPANY_ADMIN), markSaleFailedValidation, CompanySalesController.markSaleFailed);
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);
 router.get('/remote-support', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.list);
-router.post('/remote-support', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), createRemoteSupportValidation, RemoteSupportController.create);
-router.patch('/remote-support/:id', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), updateRemoteSupportValidation, RemoteSupportController.update);
+router.post('/remote-support', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.create);
+router.post('/remote-support/:id/accept', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.accept);
+router.post('/remote-support/:id/reject', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.reject);
+router.post('/remote-support/:id/complete', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.complete);
+router.post('/remote-support/:id/assign', authorizeRoles(Roles.COMPANY_ADMIN, Roles.MANAGER), routePermission('remote-support'), RemoteSupportController.assign);
+router.patch('/remote-support/:id', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.update);
 router.delete('/remote-support/:id', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.delete);
 router.get('/projects', authorizeRoles(...companyEmployeeRoles), routePermission('projects'), ProjectController.list);
 router.post('/projects', authorizeRoles(Roles.COMPANY_ADMIN, Roles.IT), routePermission('projects'), createProjectValidation, ProjectController.create);

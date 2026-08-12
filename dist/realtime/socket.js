@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.disconnectUser = exports.emitUserEvent = exports.emitDirectEvent = exports.emitConversationEvent = exports.configureSocket = void 0;
+exports.disconnectUser = exports.emitCompanyEvent = exports.emitUserEvent = exports.emitDirectEvent = exports.emitConversationEvent = exports.configureSocket = void 0;
 const socket_io_1 = require("socket.io");
 const jwt_1 = require("../utils/jwt");
 const companyAuthService_1 = require("../services/companyAuthService");
@@ -70,13 +70,20 @@ const emitConversationEvent = (conversationId, event, payload) => {
 };
 exports.emitConversationEvent = emitConversationEvent;
 const emitDirectEvent = (participantIds, event, payload) => {
-    participantIds.forEach((id) => io?.to(`conversation:${id}`).emit(event, payload));
+    participantIds.forEach((id) => {
+        io?.to(`user:${id}`).emit(event, payload);
+        io?.to(`conversation:${id}`).emit(event, payload);
+    });
 };
 exports.emitDirectEvent = emitDirectEvent;
 const emitUserEvent = (userIds, event, payload) => {
     userIds.forEach((id) => io?.to(`user:${id}`).emit(event, payload));
 };
 exports.emitUserEvent = emitUserEvent;
+const emitCompanyEvent = (event, payload) => {
+    io?.emit(event, payload);
+};
+exports.emitCompanyEvent = emitCompanyEvent;
 const disconnectUser = async (userId) => {
     try {
         if (!io)
