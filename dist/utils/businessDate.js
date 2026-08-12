@@ -25,20 +25,43 @@ function getBusinessMonthString(date = new Date()) {
 function normalizeBusinessDateString(value) {
     return value.trim().slice(0, 10);
 }
+function getLocalTimeParts(date) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: BUSINESS_TIMEZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+    return { hour, minute };
+}
 function getBusinessDayStart(value = new Date()) {
     const dateString = typeof value === 'string' ? normalizeBusinessDateString(value) : getBusinessDateString(value);
     const [year, month, day] = dateString.split('-').map(Number);
     const businessOffsetMinutes = 5 * 60 + 30;
-    // Business day starts at 12:01 PM local (Asia/Kolkata) for the given calendar date
-    // Compute UTC time for local 12:01 and subtract timezone offset to get actual UTC timestamp
-    return new Date(Date.UTC(year, month - 1, day, 12, 1, 0) - businessOffsetMinutes * 60 * 1000);
+    let effectiveDate = new Date(Date.UTC(year, month - 1, day, 12, 1, 0) - businessOffsetMinutes * 60 * 1000);
+    if (typeof value !== 'string') {
+        const localTime = getLocalTimeParts(value);
+        if (localTime.hour < 12 || (localTime.hour === 12 && localTime.minute < 1)) {
+            effectiveDate = new Date(effectiveDate.getTime() - 24 * 60 * 60 * 1000);
+        }
+    }
+    return effectiveDate;
 }
 function getBusinessDayEnd(value = new Date()) {
     const dateString = typeof value === 'string' ? normalizeBusinessDateString(value) : getBusinessDateString(value);
     const [year, month, day] = dateString.split('-').map(Number);
     const businessOffsetMinutes = 5 * 60 + 30;
-    // Business day end is next day 11:59 AM local (Asia/Kolkata)
-    return new Date(Date.UTC(year, month - 1, day + 1, 11, 59, 0) - businessOffsetMinutes * 60 * 1000);
+    let effectiveEndDate = new Date(Date.UTC(year, month - 1, day + 1, 11, 59, 0) - businessOffsetMinutes * 60 * 1000);
+    if (typeof value !== 'string') {
+        const localTime = getLocalTimeParts(value);
+        if (localTime.hour < 12 || (localTime.hour === 12 && localTime.minute < 1)) {
+            effectiveEndDate = new Date(effectiveEndDate.getTime() - 24 * 60 * 60 * 1000);
+        }
+    }
+    return effectiveEndDate;
 }
 function getBusinessDayRange(value = new Date()) {
     const start = getBusinessDayStart(value);

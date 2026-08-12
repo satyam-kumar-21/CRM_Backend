@@ -8,7 +8,13 @@ const MessageSchema = new mongoose_1.Schema({
     senderId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', required: true },
     recipientId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' },
     readBy: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' }],
-    content: { type: String, required: true, trim: true },
+    content: { type: String, required: true, trim: true, default: '' },
+    messageType: { type: String, enum: ['TEXT', 'IMAGE', 'FILE', 'AUDIO'], default: 'TEXT' },
+    fileName: { type: String, trim: true },
+    mimeType: { type: String, trim: true },
+    objectKey: { type: String, trim: true },
+    fileSize: { type: Number },
+    duration: { type: Number },
     editedAt: { type: Date },
 }, { timestamps: true });
 MessageSchema.plugin(tenantPlugin_1.tenantPlugin);

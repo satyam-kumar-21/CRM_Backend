@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const companyAuthController_1 = require("../controllers/companyAuthController");
+const chatUploadController_1 = require("../controllers/chatUploadController");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const rbacMiddleware_1 = require("../middlewares/rbacMiddleware");
 const tenantMiddleware_1 = require("../middlewares/tenantMiddleware");
@@ -73,6 +74,9 @@ router.get('/groups/:groupId/messages', (0, rbacMiddleware_1.authorizeRoles)(...
 router.get('/conversations/:conversationId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), companyAuthController_1.CompanyAuthController.getConversationMessages);
 router.post('/conversations/:conversationId/read', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), companyAuthController_1.CompanyAuthController.markConversationRead);
 router.post('/conversations/:conversationId/messages', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), companyValidator_1.postMessageValidation, companyAuthController_1.CompanyAuthController.postConversationMessage);
+router.post('/conversations/:conversationId/upload', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), chatUploadController_1.chatUpload);
+router.get('/conversations/:conversationId/messages/:messageId/attachment', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), chatUploadController_1.fetchAttachmentUrl);
+router.get('/conversations/:conversationId/messages/:messageId/download', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), chatUploadController_1.downloadAttachment);
 router.patch('/messages/:messageId', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), companyValidator_1.postMessageValidation, companyAuthController_1.CompanyAuthController.updateMessage);
 router.delete('/messages/:messageId', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('chat'), companyAuthController_1.CompanyAuthController.deleteMessage);
 exports.default = router;

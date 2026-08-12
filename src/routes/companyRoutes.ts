@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { CompanyAuthController } from '../controllers/companyAuthController';
+import { chatUpload, fetchAttachmentUrl, downloadAttachment } from '../controllers/chatUploadController';
 import { authenticate } from '../middlewares/authMiddleware';
 import { authorizeRoles } from '../middlewares/rbacMiddleware';
 import { enforceTenant } from '../middlewares/tenantMiddleware';
@@ -76,6 +77,9 @@ router.get('/groups/:groupId/messages', authorizeRoles(...companyEmployeeRoles),
 router.get('/conversations/:conversationId/messages', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), CompanyAuthController.getConversationMessages);
 router.post('/conversations/:conversationId/read', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), CompanyAuthController.markConversationRead);
 router.post('/conversations/:conversationId/messages', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), postMessageValidation, CompanyAuthController.postConversationMessage);
+router.post('/conversations/:conversationId/upload', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), chatUpload);
+router.get('/conversations/:conversationId/messages/:messageId/attachment', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), fetchAttachmentUrl);
+router.get('/conversations/:conversationId/messages/:messageId/download', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), downloadAttachment);
 router.patch('/messages/:messageId', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), postMessageValidation, CompanyAuthController.updateMessage);
 router.delete('/messages/:messageId', authorizeRoles(...companyEmployeeRoles), routePermission('chat'), CompanyAuthController.deleteMessage);
 

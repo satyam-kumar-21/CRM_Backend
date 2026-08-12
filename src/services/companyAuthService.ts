@@ -5,7 +5,7 @@ import { Company } from '../models/Company';
 import { Roles, CompanyStatus } from '../constants/index';
 import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
 import { Group } from '../models/Group';
-import { Message, IMessage } from '../models/Message';
+import { Message, IMessage, MessageType } from '../models/Message';
 import { Lead } from '../models/Lead';
 import { Sale } from '../models/Sale';
 import { Attendance } from '../models/Attendance';
@@ -564,7 +564,7 @@ export class CompanyAuthService {
     await Message.deleteMany({ companyId, groupId });
   }
 
-  static async postGroupMessage(companyId: string, senderId: string, role: Roles, groupId: string, data: { content: string }) {
+  static async postGroupMessage(companyId: string, senderId: string, role: Roles, groupId: string, data: { content: string; messageType?: MessageType; fileName?: string; mimeType?: string; objectKey?: string; fileSize?: number; duration?: number }) {
     if (!Types.ObjectId.isValid(groupId)) {
       throw { statusCode: 404, message: 'Group not found.' };
     }
@@ -581,6 +581,12 @@ export class CompanyAuthService {
       groupId,
       senderId,
       content: data.content,
+      messageType: data.messageType || 'TEXT',
+      fileName: data.fileName,
+      mimeType: data.mimeType,
+      objectKey: data.objectKey,
+      fileSize: data.fileSize,
+      duration: data.duration,
       readBy: [senderId],
     });
 
@@ -627,21 +633,21 @@ export class CompanyAuthService {
     return messages.map((message) => messageWithSender(message, userId));
   }
 
-  static async postConversationMessage(companyId: string, userId: string, role: Roles, conversationId: string, content: string) {
+  static async postConversationMessage(companyId: string, userId: string, role: Roles, conversationId: string, content: string, data?: { messageType?: MessageType; fileName?: string; mimeType?: string; objectKey?: string; fileSize?: number; duration?: number }) {
     const isObjectId = Types.ObjectId.isValid(conversationId);
     const group = isObjectId ? await Group.findOne({ _id: conversationId, companyId }) : null;
     if (group) {
       if (role !== Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
         throw { statusCode: 403, message: 'Access denied to private group.' };
       }
-      return Message.create({ companyId, groupId: conversationId, senderId: userId, content, readBy: [userId] });
+      return Message.create({ companyId, groupId: conversationId, senderId: userId, content, messageType: data?.messageType || 'TEXT', fileName: data?.fileName, mimeType: data?.mimeType, objectKey: data?.objectKey, fileSize: data?.fileSize, duration: data?.duration, readBy: [userId] });
     }
 
     if (!isObjectId) throw { statusCode: 404, message: 'Conversation not found.' };
     const employee = await Employee.findOne({ companyId, _id: conversationId });
     if (!employee) throw { statusCode: 404, message: 'Conversation not found.' };
 
-    return Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
+    return Message.create({ companyId, senderId: userId, recipientId: conversationId, content, messageType: data?.messageType || 'TEXT', fileName: data?.fileName, mimeType: data?.mimeType, objectKey: data?.objectKey, fileSize: data?.fileSize, duration: data?.duration, readBy: [userId] });
   }
 
   static async updateMessage(companyId: string, userId: string, messageId: string, content: string) {

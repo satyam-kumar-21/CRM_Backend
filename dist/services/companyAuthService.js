@@ -230,12 +230,50 @@ class CompanyAuthService {
         ]);
         const todaySalesAmount = todaySalesAgg[0]?.total || 0;
         const todayFailedSales = await Sale_1.Sale.countDocuments({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
-        const todayRemoteSuccessful = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', createdAt: { $gte: todayStart, $lt: todayEnd } });
-        const todayRemoteFailed = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId, status: 'FAILED', createdAt: { $gte: todayStart, $lt: todayEnd } });
+        const todayRemoteSuccessful = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', dateTime: { $gte: todayStart, $lt: todayEnd } });
+        const todayRemoteFailed = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId, status: 'FAILED', dateTime: { $gte: todayStart, $lt: todayEnd } });
         const todayRemoteTotal = todayRemoteSuccessful + todayRemoteFailed;
+        const currentMonth = (0, businessDate_1.getBusinessMonthString)();
+        const { start: monthStart, end: monthEnd } = (0, businessDate_1.getBusinessMonthRange)(currentMonth);
+        const topSalesEmployees = await Sale_1.Sale.aggregate([
+            {
+                $match: {
+                    companyId: new mongoose_1.Types.ObjectId(companyId),
+                    ...nonFailedSaleFilter,
+                    saleDate: { $regex: `^${currentMonth}` },
+                },
+            },
+            {
+                $group: {
+                    _id: '$connectedBy',
+                    totalAmount: { $sum: '$amount' },
+                    saleCount: { $sum: 1 },
+                },
+            },
+            { $sort: { totalAmount: -1 } },
+            { $limit: 3 },
+        ]).exec();
+        const topTechSupportEmployees = await RemoteSupport_1.RemoteSupport.aggregate([
+            {
+                $match: {
+                    companyId: new mongoose_1.Types.ObjectId(companyId),
+                    techSupportEmployeeName: { $nin: ['', null] },
+                    dateTime: { $gte: monthStart, $lt: monthEnd },
+                },
+            },
+            {
+                $group: {
+                    _id: '$techSupportEmployeeName',
+                    remoteCount: { $sum: 1 },
+                },
+            },
+            { $sort: { remoteCount: -1 } },
+            { $limit: 2 },
+        ]).exec();
         // Lists for tabular report (limited)
         const todaysLeadsList = await Lead_1.Lead.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
-        const todaysSalesList = await Sale_1.Sale.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+        const todaysSalesList = await Sale_1.Sale.find({ companyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+        const todaysFailedSalesList = await Sale_1.Sale.find({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
         const todaysRemoteList = await remoteSupportService_1.RemoteSupportService.list(companyId, role, employeeId, { fromDate: todayStart.toISOString(), toDate: todayEnd.toISOString() });
         return {
             company: {
@@ -278,6 +316,8 @@ class CompanyAuthService {
                 activeProjects: projectSummary.active,
                 completedProjects: projectSummary.completed,
                 pendingProjects: projectSummary.pending,
+                topSalesEmployees: topSalesEmployees.map((item) => ({ name: item._id, totalAmount: item.totalAmount, saleCount: item.saleCount })),
+                topTechSupportEmployees: topTechSupportEmployees.map((item) => ({ name: item._id, remoteCount: item.remoteCount })),
                 // today's report values (business day)
                 todayReport: {
                     businessDate: { start: todayStart.toISOString(), end: todayEnd.toISOString() },
@@ -293,6 +333,7 @@ class CompanyAuthService {
                     lists: {
                         leads: todaysLeadsList.map((l) => ({ _id: l._id, name: l.name, country: l.country, system: l.system, createdAt: l.createdAt })),
                         sales: todaysSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
+                        failed: todaysFailedSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
                         remote: todaysRemoteList.map((r) => ({ _id: r._id, customerName: r.customerName, salesEmployeeName: r.salesEmployeeName, techSupportEmployeeName: r.techSupportEmployeeName, status: r.status, dateTime: r.dateTime })),
                     },
                 },
@@ -511,6 +552,12 @@ class CompanyAuthService {
             groupId,
             senderId,
             content: data.content,
+            messageType: data.messageType || 'TEXT',
+            fileName: data.fileName,
+            mimeType: data.mimeType,
+            objectKey: data.objectKey,
+            fileSize: data.fileSize,
+            duration: data.duration,
             readBy: [senderId],
         });
         return message;
@@ -554,21 +601,21 @@ class CompanyAuthService {
         }).populate('senderId', 'name').sort({ createdAt: 1 });
         return messages.map((message) => messageWithSender(message, userId));
     }
-    static async postConversationMessage(companyId, userId, role, conversationId, content) {
+    static async postConversationMessage(companyId, userId, role, conversationId, content, data) {
         const isObjectId = mongoose_1.Types.ObjectId.isValid(conversationId);
         const group = isObjectId ? await Group_1.Group.findOne({ _id: conversationId, companyId }) : null;
         if (group) {
             if (role !== index_1.Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
                 throw { statusCode: 403, message: 'Access denied to private group.' };
             }
-            return Message_1.Message.create({ companyId, groupId: conversationId, senderId: userId, content, readBy: [userId] });
+            return Message_1.Message.create({ companyId, groupId: conversationId, senderId: userId, content, messageType: data?.messageType || 'TEXT', fileName: data?.fileName, mimeType: data?.mimeType, objectKey: data?.objectKey, fileSize: data?.fileSize, duration: data?.duration, readBy: [userId] });
         }
         if (!isObjectId)
             throw { statusCode: 404, message: 'Conversation not found.' };
         const employee = await Employee_1.Employee.findOne({ companyId, _id: conversationId });
         if (!employee)
             throw { statusCode: 404, message: 'Conversation not found.' };
-        return Message_1.Message.create({ companyId, senderId: userId, recipientId: conversationId, content, readBy: [userId] });
+        return Message_1.Message.create({ companyId, senderId: userId, recipientId: conversationId, content, messageType: data?.messageType || 'TEXT', fileName: data?.fileName, mimeType: data?.mimeType, objectKey: data?.objectKey, fileSize: data?.fileSize, duration: data?.duration, readBy: [userId] });
     }
     static async updateMessage(companyId, userId, messageId, content) {
         const message = await Message_1.Message.findOne({ companyId, _id: messageId });
