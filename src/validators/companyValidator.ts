@@ -70,14 +70,45 @@ export const leadValidation = [
   body('isSale').isIn(['yes', 'no']).withMessage('Sale status must be yes or no'),
 ];
 
+// Separate validator for PATCH /leads/:id — all fields optional
+export const updateLeadValidation = [
+  body('name').optional().trim().notEmpty().withMessage('Lead name cannot be empty'),
+  body('country').optional().trim().notEmpty().withMessage('Lead country cannot be empty'),
+  body('system').optional().trim().notEmpty().withMessage('Lead system cannot be empty'),
+  body('contactNo').optional().trim().notEmpty().withMessage('Lead contact number cannot be empty'),
+  body('otherDetails').optional().trim(),
+  body('customerEmail').optional().trim(),
+  body('alternateContactNo').optional().trim(),
+  body('customerAddress').optional().trim(),
+  body('issues').optional().trim(),
+  body('plan').optional().trim(),
+  body('paymentMerchant').optional().trim(),
+  body('connected').optional().isIn(['yes', 'no']).withMessage('Connected must be yes or no'),
+  body('connectedBy').optional().trim(),
+  body('isSale').optional().isIn(['yes', 'no']).withMessage('Sale status must be yes or no'),
+  body('saleAmount').optional().isFloat({ min: 0 }).withMessage('Sale amount must be a positive number'),
+  body('salePaymentMethod').optional().isIn(['Card', 'Check', 'Wire Transfer', 'Cash', 'UPI', 'Bank Transfer', 'Online', 'Other']).withMessage('Invalid payment method'),
+  body('techSupportStatus').optional().isIn(['NONE', 'PENDING', 'ACCEPTED', 'SUCCESSFUL', 'FAILED']).withMessage('Invalid tech support status'),
+  body('status').optional().isIn(['OPEN', 'COMPLETED']).withMessage('Invalid lead status'),
+  body('paymentConfirmed').optional().isIn(['yes', 'no']).withMessage('Payment confirmed must be yes or no'),
+  body('finalStatus').optional().isIn(['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED']).withMessage('Invalid final status'),
+];
+
 export const saleValidation = [
   body('name').trim().notEmpty().withMessage('Customer name is required'),
   body('country').trim().notEmpty().withMessage('Customer country is required'),
   body('system').trim().notEmpty().withMessage('Purchased system is required'),
   body('connectedBy').trim().notEmpty().withMessage('Closed by is required'),
   body('amount').isFloat({ min: 0 }).withMessage('Sale amount must be a positive number'),
-  body('paymentMethod').isIn(['Card', 'Check', 'Wire Transfer', 'Cash', 'Other']).withMessage('Valid payment method is required'),
+  body('paymentMethod').isIn(['Card', 'Check', 'Wire Transfer', 'Cash', 'UPI', 'Bank Transfer', 'Online', 'Other']).withMessage('Valid payment method is required'),
   body('saleDate').isISO8601().withMessage('Valid sale date is required'),
+  body('customerId').optional().trim(),
+  body('customerEmail').optional().trim(),
+  body('alternateContactNo').optional().trim(),
+  body('customerAddress').optional().trim(),
+  body('issues').optional().trim(),
+  body('plan').optional().trim(),
+  body('paymentMerchant').optional().trim(),
 ];
 
 export const markSaleFailedValidation = [

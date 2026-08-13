@@ -3,6 +3,7 @@ import { RemoteSupport, IRemoteSupport } from '../models/RemoteSupport';
 import { Lead } from '../models/Lead';
 import { Employee } from '../models/Employee';
 import { Roles } from '../constants/index';
+import { emitCompanyEvent } from '../realtime/socket';
 
 export class RemoteSupportService {
   static async list(companyId: string, role: Roles, employeeId: string, filters: Record<string, any> = {}) {
@@ -80,6 +81,14 @@ export class RemoteSupportService {
       status: 'PENDING',
     });
 
+    if (data.leadId) {
+      await Lead.findOneAndUpdate(
+        { companyId, _id: data.leadId },
+        { techSupportStatus: 'PENDING' }
+      );
+    }
+
+    emitCompanyEvent('support:created', record);
     return record;
   }
 
@@ -111,6 +120,18 @@ export class RemoteSupportService {
       throw { statusCode: 409, message: 'This support request has already been accepted or assigned to another employee.' };
     }
 
+    if (record.leadId) {
+      await Lead.findOneAndUpdate(
+        { companyId, _id: record.leadId },
+        {
+          techSupportStatus: 'ACCEPTED',
+          techSupportEmployeeId: employee._id,
+          techSupportEmployeeName: employee.name,
+        }
+      );
+    }
+
+    emitCompanyEvent('support:accepted', record);
     return record;
   }
 
@@ -137,11 +158,16 @@ export class RemoteSupportService {
     if (record.leadId) {
       await Lead.findOneAndUpdate(
         { companyId, _id: record.leadId },
-        { status: 'COMPLETED', completionReason: record.rejectedReason },
+        {
+          status: 'COMPLETED',
+          completionReason: record.rejectedReason,
+          techSupportStatus: 'FAILED',
+        },
         { new: true }
       );
     }
 
+    emitCompanyEvent('support:rejected', record);
     return record;
   }
 
@@ -158,6 +184,19 @@ export class RemoteSupportService {
         record.techSupportEmployeeId = new Types.ObjectId(employeeId);
         record.techSupportEmployeeName = employee?.name || 'Tech Support';
       }
+
+      if (record.leadId) {
+        await Lead.findOneAndUpdate(
+          { companyId, _id: record.leadId },
+          {
+            techSupportStatus: 'SUCCESSFUL',
+            techSupportCompletedAt: new Date(),
+            techSupportEmployeeId: record.techSupportEmployeeId,
+            techSupportEmployeeName: record.techSupportEmployeeName,
+          }
+        );
+      }
+      emitCompanyEvent('support:completed', record);
     } else if (data.status === 'FAILED') {
       if (!data.failedReason || !data.failedReason.trim()) {
         throw { statusCode: 400, message: 'Failure reason is required when marking support as failed.' };
@@ -175,10 +214,17 @@ export class RemoteSupportService {
       if (record.leadId) {
         await Lead.findOneAndUpdate(
           { companyId, _id: record.leadId },
-          { status: 'COMPLETED', completionReason: record.failedReason },
+          {
+            status: 'COMPLETED',
+            completionReason: record.failedReason,
+            techSupportStatus: 'FAILED',
+            techSupportEmployeeId: record.techSupportEmployeeId,
+            techSupportEmployeeName: record.techSupportEmployeeName,
+          },
           { new: true }
         );
       }
+      emitCompanyEvent('support:failed', record);
     }
 
     await record.save();
@@ -200,6 +246,19 @@ export class RemoteSupportService {
       { new: true, runValidators: true }
     );
     if (!record) throw { statusCode: 404, message: 'Remote support record not found.' };
+
+    if (record.leadId) {
+      await Lead.findOneAndUpdate(
+        { companyId, _id: record.leadId },
+        {
+          techSupportStatus: 'ACCEPTED',
+          techSupportEmployeeId: techEmployee._id,
+          techSupportEmployeeName: techEmployee.name,
+        }
+      );
+    }
+
+    emitCompanyEvent('support:assigned', record);
     return record;
   }
 
@@ -267,11 +326,21 @@ export class RemoteSupportService {
         {
           status: 'COMPLETED',
           completionReason: data.status === 'FAILED' ? record.failedReason : record.rejectedReason,
+          techSupportStatus: 'FAILED',
         },
         { new: true, runValidators: true }
       );
+    } else if (data.status === 'SUCCESSFUL' && record.leadId) {
+      await Lead.findOneAndUpdate(
+        { companyId, _id: record.leadId },
+        {
+          techSupportStatus: 'SUCCESSFUL',
+          techSupportCompletedAt: new Date(),
+        }
+      );
     }
 
+    emitCompanyEvent('support:updated', record);
     return record;
   }
 
@@ -291,6 +360,7 @@ export class RemoteSupportService {
     }
 
     await record.deleteOne();
+    emitCompanyEvent('support:updated', { id, deleted: true });
     return;
   }
 

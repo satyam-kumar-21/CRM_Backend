@@ -5,7 +5,7 @@ import { authenticate } from '../middlewares/authMiddleware';
 import { authorizeRoles } from '../middlewares/rbacMiddleware';
 import { enforceTenant } from '../middlewares/tenantMiddleware';
 import { enforceEmployeeLoginEnabled } from '../middlewares/companySettingsMiddleware';
-import { companyLoginValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, saleValidation, markSaleFailedValidation, createLeaveValidation } from '../validators/companyValidator';
+import { companyLoginValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, updateLeadValidation, saleValidation, markSaleFailedValidation, createLeaveValidation } from '../validators/companyValidator';
 import { createRemoteSupportValidation, updateRemoteSupportValidation } from '../validators/remoteSupportValidator';
 import { createProjectValidation, updateProjectValidation } from '../validators/projectValidator';
 import { CompanySalesController } from '../controllers/companySales.controller';
@@ -28,7 +28,7 @@ router.use(authenticate, enforceTenant, enforceEmployeeLoginEnabled);
 router.post('/logout', CompanyAuthController.logout);
 
 router.get('/dashboard', authorizeRoles(Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.IT, Roles.INTERN), CompanyAuthController.getDashboard);
-const companyEmployeeRoles = [Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.IT, Roles.INTERN] as const;
+const companyEmployeeRoles = [Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.VERIFICATION, Roles.FEEDBACK, Roles.IT, Roles.INTERN] as const;
 
 router.get('/attendance', authorizeRoles(...companyEmployeeRoles), routePermission('attendance'), AttendanceController.list);
 router.get('/attendance/employees', authorizeRoles(Roles.COMPANY_ADMIN), AttendanceController.employees);
@@ -55,13 +55,23 @@ router.delete('/employees/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuth
 router.patch('/employees/:id/permissions', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.updateEmployeePermissions);
 router.get('/leads', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), CompanySalesController.getLeads);
 router.post('/leads', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), leadValidation, CompanySalesController.createLead);
-router.patch('/leads/:id', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), leadValidation, CompanySalesController.updateLead);
+router.post('/leads/:id/accept', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), CompanySalesController.acceptLead);
+router.patch('/leads/:id', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), updateLeadValidation, CompanySalesController.updateLead);
 router.delete('/leads/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteLead);
 router.get('/sales', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), CompanySalesController.getSales);
 router.post('/sales', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), saleValidation, CompanySalesController.createSale);
 router.patch('/sales/:id', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), saleValidation, CompanySalesController.updateSale);
 router.patch('/sales/:id/failed', authorizeRoles(Roles.COMPANY_ADMIN), markSaleFailedValidation, CompanySalesController.markSaleFailed);
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);
+
+router.get('/verification', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.getVerifications);
+router.post('/verification/:id/start', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.startVerification);
+router.post('/verification/:id/complete', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.completeVerification);
+
+router.get('/feedback', authorizeRoles(...companyEmployeeRoles), routePermission('feedback'), CompanySalesController.getFeedbacks);
+router.post('/feedback/:id/complete', authorizeRoles(...companyEmployeeRoles), routePermission('feedback'), CompanySalesController.completeFeedback);
+
+router.get('/todays-work', authorizeRoles(...companyEmployeeRoles), CompanySalesController.getTodaysWork);
 router.get('/remote-support', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.list);
 router.post('/remote-support', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.create);
 router.post('/remote-support/:id/accept', authorizeRoles(...companyEmployeeRoles), routePermission('remote-support'), RemoteSupportController.accept);
