@@ -441,6 +441,27 @@ export class CompanySalesService {
     return { id };
   }
 
+  static buildCustomerSearchFilters(search: string) {
+    const trimmed = (search || '').trim();
+    if (!trimmed) return [];
+
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'i');
+    const conditions: any[] = [
+      { name: regex },
+      { customerEmail: regex },
+      { customerId: regex },
+      { alternateContactNo: regex },
+      { leadId: regex },
+    ];
+
+    if (Types.ObjectId.isValid(trimmed)) {
+      conditions.push({ _id: new Types.ObjectId(trimmed) });
+    }
+
+    return conditions;
+  }
+
   static async searchCustomers(companyId: string, role: string, employeeId: string, q: string) {
     const search = (q || '').trim();
     if (!search) {
@@ -450,8 +471,8 @@ export class CompanySalesService {
       return Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
     }
 
-    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const query: any = { companyId };
+    const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
 
     if (role === Roles.SALES) {
       query.$or = [
@@ -462,26 +483,12 @@ export class CompanySalesService {
 
     const matches = await Sale.find({
       ...query,
-      $or: [
-        { name: regex },
-        { customerEmail: regex },
-        { customerId: regex },
-        { alternateContactNo: regex },
-        { leadId: regex },
-        { _id: regex },
-      ],
+      $or: searchFilters,
     }).sort({ createdAt: -1 }).limit(100);
 
     if (matches.length > 0) return matches;
 
-    return Sale.find({ companyId, $or: [
-      { name: regex },
-      { customerEmail: regex },
-      { customerId: regex },
-      { alternateContactNo: regex },
-      { leadId: regex },
-      { _id: regex },
-    ] }).sort({ createdAt: -1 }).limit(100);
+    return Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100);
   }
 
   static async createUpgrade(companyId: string, data: Partial<SaleInput> & { customerId?: string; upgradeAmount?: number; salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT'; salesTaxValue?: number; salesTaxAmount?: number; finalAmount?: number; paymentMethod?: ISale['paymentMethod']; salesEmployeeRemark?: string; upgradedBy?: string; customerName?: string; }, currentUserId?: string, currentUserName?: string) {
