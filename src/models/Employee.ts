@@ -2,6 +2,8 @@ import { Schema, model, Document } from 'mongoose';
 import { Roles } from '../constants/index';
 import { tenantPlugin } from '../plugins/tenantPlugin';
 
+export type EmployeeTheme = 'blue' | 'green' | 'pink' | 'purple' | 'orange';
+
 export interface IEmployee extends Document {
   companyId: Schema.Types.ObjectId;
   employeeId: string;
@@ -11,6 +13,7 @@ export interface IEmployee extends Document {
   phone: string;
   avatar?: string;
   role: Roles;
+  theme: EmployeeTheme;
   permissions: string[];
   monthlySalesTarget?: number;
   monthlySalesAchieved?: number;
@@ -36,6 +39,7 @@ const EmployeeSchema = new Schema<IEmployee>(
     phone: { type: String, required: true },
     avatar: { type: String, default: '' },
     role: { type: String, enum: Object.values(Roles), default: Roles.EMPLOYEE },
+    theme: { type: String, enum: ['blue', 'green', 'pink', 'purple', 'orange'], default: 'blue' },
     permissions: { type: [String], default: [] },
     monthlySalesTarget: { type: Number, default: 0 },
     monthlySalesAchieved: { type: Number, default: 0 },

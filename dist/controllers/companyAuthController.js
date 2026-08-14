@@ -36,7 +36,19 @@ class CompanyAuthController {
     }
     static async validateSession(req, res, next) {
         try {
-            responseHandler_1.ApiResponse.success(res, 'Session valid', { user: req.user });
+            const employee = await companyAuthService_1.CompanyAuthService.getCurrentEmployeeProfile(req.user.companyId, req.user.id);
+            const user = { ...req.user, theme: employee?.theme || 'blue' };
+            responseHandler_1.ApiResponse.success(res, 'Session valid', { user });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async updateTheme(req, res, next) {
+        try {
+            const { theme } = req.body || {};
+            const updated = await companyAuthService_1.CompanyAuthService.updateEmployeeTheme(req.user.companyId, req.user.id, theme);
+            responseHandler_1.ApiResponse.success(res, 'Theme updated successfully', { theme: updated.theme });
         }
         catch (error) {
             next(error);

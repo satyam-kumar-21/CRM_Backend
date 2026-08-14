@@ -12,6 +12,7 @@ const EmployeeSchema = new mongoose_1.Schema({
     phone: { type: String, required: true },
     avatar: { type: String, default: '' },
     role: { type: String, enum: Object.values(index_1.Roles), default: index_1.Roles.EMPLOYEE },
+    theme: { type: String, enum: ['blue', 'green', 'pink', 'purple', 'orange'], default: 'blue' },
     permissions: { type: [String], default: [] },
     monthlySalesTarget: { type: Number, default: 0 },
     monthlySalesAchieved: { type: Number, default: 0 },

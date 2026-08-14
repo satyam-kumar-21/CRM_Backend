@@ -140,6 +140,18 @@ class CompanyAuthService {
         attendance.workHours = Math.max(0, (checkOut.getTime() - attendance.checkIn.getTime()) / 3600000);
         await attendance.save();
     }
+    static async getCurrentEmployeeProfile(companyId, employeeId) {
+        return Employee_1.Employee.findOne({ companyId, _id: employeeId }).select('theme name role employeeId email phone createdAt');
+    }
+    static async updateEmployeeTheme(companyId, employeeId, theme) {
+        const allowedThemes = ['blue', 'green', 'pink', 'purple', 'orange'];
+        const nextTheme = allowedThemes.includes(theme) ? theme : 'blue';
+        const employee = await Employee_1.Employee.findOneAndUpdate({ companyId, _id: employeeId }, { $set: { theme: nextTheme } }, { new: true });
+        if (!employee) {
+            throw { statusCode: 404, message: 'Employee not found.' };
+        }
+        return { theme: employee.theme || 'blue' };
+    }
     static async getDashboard(employeeId, companyId, role) {
         let actualCompanyId = companyId;
         let employee = await Employee_1.Employee.findOne({ companyId, _id: employeeId });
@@ -306,6 +318,7 @@ class CompanyAuthService {
                 name: employee.name,
                 email: employee.email || '',
                 role: employee.role,
+                theme: employee.theme || 'blue',
                 monthlySalesTarget: employee.monthlySalesTarget || 0,
                 remoteTarget: employee.remoteTarget || 0,
                 monthlySalesAchieved: employee.monthlySalesAchieved || 0,

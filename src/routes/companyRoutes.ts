@@ -40,6 +40,7 @@ router.get('/leave', authorizeRoles(...companyEmployeeRoles), routePermission('l
 router.post('/leave', authorizeRoles(...companyEmployeeRoles), routePermission('leave'), createLeaveValidation, LeaveController.create);
 router.patch('/leave/:id/status', authorizeRoles(Roles.COMPANY_ADMIN), LeaveController.updateStatus);
 router.get('/settings', authorizeRoles(...companyEmployeeRoles), CompanySettingsController.getSettings);
+router.patch('/theme', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.updateTheme);
 router.patch('/settings', authorizeRoles(Roles.COMPANY_ADMIN), CompanySettingsController.updateSettings);
 router.get('/settings/holidays', authorizeRoles(Roles.COMPANY_ADMIN), CompanySettingsController.listHolidays);
 router.post('/settings/holidays', authorizeRoles(Roles.COMPANY_ADMIN), CompanySettingsController.addHoliday);

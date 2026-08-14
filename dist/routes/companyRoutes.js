@@ -36,6 +36,7 @@ router.get('/leave', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRole
 router.post('/leave', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('leave'), companyValidator_1.createLeaveValidation, leaveController_1.LeaveController.create);
 router.patch('/leave/:id/status', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), leaveController_1.LeaveController.updateStatus);
 router.get('/settings', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companySettingsController_1.CompanySettingsController.getSettings);
+router.patch('/theme', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.updateTheme);
 router.patch('/settings', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySettingsController_1.CompanySettingsController.updateSettings);
 router.get('/settings/holidays', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySettingsController_1.CompanySettingsController.listHolidays);
 router.post('/settings/holidays', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySettingsController_1.CompanySettingsController.addHoliday);

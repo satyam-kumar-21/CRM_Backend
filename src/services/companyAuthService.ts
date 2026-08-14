@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
-import { Employee, IEmployee } from '../models/Employee';
+import { Employee, IEmployee, EmployeeTheme } from '../models/Employee';
 import { Company } from '../models/Company';
 import { Roles, CompanyStatus } from '../constants/index';
 import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
@@ -143,6 +143,24 @@ export class CompanyAuthService {
     attendance.checkOut = checkOut;
     attendance.workHours = Math.max(0, (checkOut.getTime() - attendance.checkIn.getTime()) / 3600000);
     await attendance.save();
+  }
+
+  static async getCurrentEmployeeProfile(companyId: string, employeeId: string) {
+    return Employee.findOne({ companyId, _id: employeeId }).select('theme name role employeeId email phone createdAt');
+  }
+
+  static async updateEmployeeTheme(companyId: string, employeeId: string, theme: EmployeeTheme) {
+    const allowedThemes: EmployeeTheme[] = ['blue', 'green', 'pink', 'purple', 'orange'];
+    const nextTheme = allowedThemes.includes(theme as EmployeeTheme) ? (theme as EmployeeTheme) : 'blue';
+    const employee = await Employee.findOneAndUpdate(
+      { companyId, _id: employeeId },
+      { $set: { theme: nextTheme } },
+      { new: true }
+    );
+    if (!employee) {
+      throw { statusCode: 404, message: 'Employee not found.' };
+    }
+    return { theme: employee.theme || 'blue' };
   }
 
   static async getDashboard(employeeId: string, companyId: string, role: Roles) {
@@ -323,6 +341,7 @@ export class CompanyAuthService {
         name: employee.name,
         email: employee.email || '',
         role: employee.role,
+        theme: employee.theme || 'blue',
         monthlySalesTarget: employee.monthlySalesTarget || 0,
         remoteTarget: employee.remoteTarget || 0,
         monthlySalesAchieved: employee.monthlySalesAchieved || 0,
