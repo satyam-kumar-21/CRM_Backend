@@ -37,6 +37,7 @@ const SaleSchema = new mongoose_1.Schema({
     failedAt: { type: Date, default: null },
     failedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', default: null },
     failedByName: { type: String, default: 'N/A' },
+    salesEmployeeRemark: { type: String, default: '', trim: true },
     // Verification schema
     verificationStatus: { type: String, enum: ['PENDING', 'IN_PROGRESS', 'SUCCESSFUL', 'FAILED'], default: 'PENDING' },
     verificationEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', default: null },

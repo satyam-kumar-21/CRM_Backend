@@ -33,6 +33,7 @@ export interface ILead extends Document {
   finalStatus?: 'PENDING_PAYMENT' | 'CLOSED' | 'PAYMENT_FAILED';
   status: 'OPEN' | 'COMPLETED';
   completionReason?: string;
+  salesEmployeeRemark?: string;
   workflowMessageId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -68,6 +69,7 @@ const LeadSchema = new Schema<ILead>(
     finalStatus: { type: String, enum: ['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED'] },
     status: { type: String, enum: ['OPEN', 'COMPLETED'], default: 'OPEN' },
     completionReason: { type: String, default: '' },
+    salesEmployeeRemark: { type: String, default: '', trim: true },
     workflowMessageId: { type: String, trim: true },
   },
   { timestamps: true }

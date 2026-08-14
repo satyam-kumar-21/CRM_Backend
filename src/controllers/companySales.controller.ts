@@ -244,6 +244,50 @@ export class CompanySalesController {
   }
 
   // Today's Work
+  static async searchCustomers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      ApiResponse.success(
+        res,
+        'Customer search results fetched successfully',
+        await CompanySalesService.searchCustomers(req.user!.companyId!, req.user!.role, req.user!.id, String(req.query.q || ''))
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createUpgrade(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      if (!validate(req, res)) return;
+      const emp = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');
+      const empName = emp?.name || 'Sales Employee';
+      ApiResponse.success(
+        res,
+        'Upgrade created successfully',
+        await CompanySalesService.createUpgrade(req.user!.companyId!, req.body, req.user!.id, empName),
+        201
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getUpgrades(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      ApiResponse.success(
+        res,
+        'Upgrades fetched successfully',
+        await CompanySalesService.getUpgrades(req.user!.companyId!, req.user!.role, req.user!.id, {
+          customerId: String(req.query.customerId || ''),
+          status: String(req.query.status || ''),
+          q: String(req.query.q || ''),
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getTodaysWork(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const emp = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');

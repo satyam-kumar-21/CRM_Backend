@@ -38,6 +38,7 @@ export interface ISale extends Document {
   failedAt?: Date | null;
   failedBy?: Types.ObjectId | null;
   failedByName: string;
+  salesEmployeeRemark?: string;
 
   // Verification fields
   verificationStatus: 'PENDING' | 'IN_PROGRESS' | 'SUCCESSFUL' | 'FAILED';
@@ -100,6 +101,7 @@ const SaleSchema = new Schema<ISale>(
     failedAt: { type: Date, default: null },
     failedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
     failedByName: { type: String, default: 'N/A' },
+    salesEmployeeRemark: { type: String, default: '', trim: true },
 
     // Verification schema
     verificationStatus: { type: String, enum: ['PENDING', 'IN_PROGRESS', 'SUCCESSFUL', 'FAILED'], default: 'PENDING' },

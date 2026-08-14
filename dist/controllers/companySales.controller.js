@@ -192,6 +192,38 @@ class CompanySalesController {
         }
     }
     // Today's Work
+    static async searchCustomers(req, res, next) {
+        try {
+            responseHandler_1.ApiResponse.success(res, 'Customer search results fetched successfully', await companySalesService_1.CompanySalesService.searchCustomers(req.user.companyId, req.user.role, req.user.id, String(req.query.q || '')));
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async createUpgrade(req, res, next) {
+        try {
+            if (!validate(req, res))
+                return;
+            const emp = await Employee_1.Employee.findOne({ companyId: req.user.companyId, _id: req.user.id }).select('name');
+            const empName = emp?.name || 'Sales Employee';
+            responseHandler_1.ApiResponse.success(res, 'Upgrade created successfully', await companySalesService_1.CompanySalesService.createUpgrade(req.user.companyId, req.body, req.user.id, empName), 201);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async getUpgrades(req, res, next) {
+        try {
+            responseHandler_1.ApiResponse.success(res, 'Upgrades fetched successfully', await companySalesService_1.CompanySalesService.getUpgrades(req.user.companyId, req.user.role, req.user.id, {
+                customerId: String(req.query.customerId || ''),
+                status: String(req.query.status || ''),
+                q: String(req.query.q || ''),
+            }));
+        }
+        catch (error) {
+            next(error);
+        }
+    }
     static async getTodaysWork(req, res, next) {
         try {
             const emp = await Employee_1.Employee.findOne({ companyId: req.user.companyId, _id: req.user.id }).select('name');

@@ -60,7 +60,10 @@ router.post('/leads/:id/accept', authorizeRoles(...companyEmployeeRoles), routeP
 router.patch('/leads/:id', authorizeRoles(...companyEmployeeRoles), routePermission('leads'), updateLeadValidation, CompanySalesController.updateLead);
 router.delete('/leads/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteLead);
 router.get('/sales', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), CompanySalesController.getSales);
+router.get('/sales/customers/search', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), CompanySalesController.searchCustomers);
 router.post('/sales', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), saleValidation, CompanySalesController.createSale);
+router.post('/sales/upgrades', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), CompanySalesController.createUpgrade);
+router.get('/sales/upgrades', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), CompanySalesController.getUpgrades);
 router.patch('/sales/:id', authorizeRoles(...companyEmployeeRoles), routePermission('sales'), saleValidation, CompanySalesController.updateSale);
 router.patch('/sales/:id/failed', authorizeRoles(Roles.COMPANY_ADMIN), markSaleFailedValidation, CompanySalesController.markSaleFailed);
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);

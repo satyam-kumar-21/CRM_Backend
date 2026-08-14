@@ -32,6 +32,7 @@ const LeadSchema = new mongoose_1.Schema({
     finalStatus: { type: String, enum: ['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED'] },
     status: { type: String, enum: ['OPEN', 'COMPLETED'], default: 'OPEN' },
     completionReason: { type: String, default: '' },
+    salesEmployeeRemark: { type: String, default: '', trim: true },
     workflowMessageId: { type: String, trim: true },
 }, { timestamps: true });
 LeadSchema.plugin(tenantPlugin_1.tenantPlugin);

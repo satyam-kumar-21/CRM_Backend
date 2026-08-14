@@ -1,5 +1,6 @@
 import { Lead, ILead } from '../models/Lead';
 import { Sale, ISale } from '../models/Sale';
+import { Upgrade, IUpgrade } from '../models/Upgrade';
 import { Employee } from '../models/Employee';
 import { getNextCustomerId } from '../models/Counter';
 import { Roles } from '../constants/index';
@@ -36,6 +37,7 @@ type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   finalStatus?: 'PENDING_PAYMENT' | 'CLOSED' | 'PAYMENT_FAILED';
   status?: 'OPEN' | 'COMPLETED';
   completionReason?: string;
+  salesEmployeeRemark?: string;
   workflowMessageId?: string;
 };
 
@@ -67,6 +69,7 @@ type SaleInput = Omit<Partial<ISale>, 'companyId'> & {
   paymentMethod: ISale['paymentMethod'];
   saleDate?: string;
   leadId?: string;
+  salesEmployeeRemark?: string;
 };
 
 export class CompanySalesService {
@@ -199,6 +202,7 @@ export class CompanySalesService {
         let salesEmpId = lead.assignedTo ? new Types.ObjectId(lead.assignedTo.toString()) : undefined;
         if (!salesEmpId && employeeId) salesEmpId = new Types.ObjectId(employeeId);
         const salesEmpName = lead.assignedToName || lead.connectedBy || 'Sales Employee';
+        const salesEmployeeRemark = (data.salesEmployeeRemark ?? lead.salesEmployeeRemark ?? '').trim();
         const finalSaleAmount = Number(data.finalAmount ?? data.saleAmount ?? lead.saleAmount ?? 0);
         const mainAmount = Number(data.mainAmount ?? 0);
         const upgradedAmount = Number(data.upgradedAmount ?? 0);
@@ -239,9 +243,7 @@ export class CompanySalesService {
           paymentMethod: data.salePaymentMethod || lead.salePaymentMethod || 'Card',
           saleDate: currentBDate,
           businessDate: currentBDate,
-          verificationStatus: 'PENDING',
-          feedbackStatus: 'PENDING',
-          feedbackBusinessDate: nextBDate,
+          salesEmployeeRemark,
         });
 
         await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
@@ -326,6 +328,7 @@ export class CompanySalesService {
       if (existingSale) return existingSale;
     }
 
+    const salesEmployeeRemark = (data.salesEmployeeRemark || '').trim();
     const currentBDate = getBusinessDateString();
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -366,6 +369,7 @@ export class CompanySalesService {
       finalAmount,
       saleDate: data.saleDate || currentBDate,
       businessDate: currentBDate,
+      salesEmployeeRemark,
       verificationStatus: 'PENDING',
       feedbackStatus: 'PENDING',
       feedbackBusinessDate: nextBDate,
@@ -396,6 +400,7 @@ export class CompanySalesService {
       { companyId, _id: id },
       {
         ...data,
+        salesEmployeeRemark: data.salesEmployeeRemark !== undefined ? data.salesEmployeeRemark.trim() : existing.salesEmployeeRemark || '',
         mainAmount,
         upgradedAmount,
         salesTaxType,
@@ -434,6 +439,108 @@ export class CompanySalesService {
     if (!result.deletedCount) throw { statusCode: 404, message: 'Sale not found.' };
     emitCompanyEvent('sale:deleted', { id });
     return { id };
+  }
+
+  static async searchCustomers(companyId: string, role: string, employeeId: string, q: string) {
+    const search = (q || '').trim();
+    if (!search) {
+      if (role === Roles.SALES) {
+        return Sale.find({ companyId, salesEmployeeId: new Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50);
+      }
+      return Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
+    }
+
+    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const query: any = { companyId };
+
+    if (role === Roles.SALES) {
+      query.$or = [
+        { salesEmployeeId: new Types.ObjectId(employeeId) },
+        { connectedBy: employeeId },
+      ];
+    }
+
+    const matches = await Sale.find({
+      ...query,
+      $or: [
+        { name: regex },
+        { customerEmail: regex },
+        { customerId: regex },
+        { alternateContactNo: regex },
+        { leadId: regex },
+        { _id: regex },
+      ],
+    }).sort({ createdAt: -1 }).limit(100);
+
+    if (matches.length > 0) return matches;
+
+    return Sale.find({ companyId, $or: [
+      { name: regex },
+      { customerEmail: regex },
+      { customerId: regex },
+      { alternateContactNo: regex },
+      { leadId: regex },
+      { _id: regex },
+    ] }).sort({ createdAt: -1 }).limit(100);
+  }
+
+  static async createUpgrade(companyId: string, data: Partial<SaleInput> & { customerId?: string; upgradeAmount?: number; salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT'; salesTaxValue?: number; salesTaxAmount?: number; finalAmount?: number; paymentMethod?: ISale['paymentMethod']; salesEmployeeRemark?: string; upgradedBy?: string; customerName?: string; }, currentUserId?: string, currentUserName?: string) {
+    const customerId = data.customerId || (await getNextCustomerId(companyId));
+    const upgradeAmount = Number(data.upgradeAmount ?? data.amount ?? 0);
+    const salesTaxType = data.salesTaxType || 'PERCENTAGE';
+    const salesTaxValue = Number(data.salesTaxValue ?? 0);
+    const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? (upgradeAmount * salesTaxValue) / 100 : salesTaxValue));
+    const finalAmount = Number(data.finalAmount ?? (upgradeAmount + salesTaxAmount));
+    const saleForUpgrade = await Sale.findOne({ companyId, customerId }).sort({ createdAt: -1 });
+    const existingUpgrades = await Upgrade.countDocuments({ companyId, customerId });
+
+    const upgrade = await Upgrade.create({
+      companyId,
+      customerId,
+      customerName: data.customerName || saleForUpgrade?.name || 'Customer',
+      salesEmployeeId: saleForUpgrade?.salesEmployeeId || new Types.ObjectId(currentUserId || ''),
+      salesEmployeeName: saleForUpgrade?.salesEmployeeName || currentUserName || 'Sales Employee',
+      upgradedBy: currentUserId ? new Types.ObjectId(currentUserId) : undefined,
+      upgradedByName: currentUserName || 'Sales Employee',
+      originalSaleId: saleForUpgrade?._id,
+      upgradeNumber: existingUpgrades + 1,
+      upgradeAmount,
+      salesTaxType,
+      salesTaxValue,
+      salesTaxAmount,
+      finalAmount,
+      paymentMethod: data.paymentMethod || saleForUpgrade?.paymentMethod || 'Card',
+      salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
+      status: 'PENDING',
+      techSupportStatus: 'NONE',
+      verificationStatus: 'PENDING',
+      feedbackStatus: 'PENDING',
+    });
+
+    emitCompanyEvent('upgrade:created', upgrade);
+    return upgrade;
+  }
+
+  static async getUpgrades(companyId: string, role: string, employeeId: string, filters: { customerId?: string; status?: string; q?: string } = {}) {
+    const query: any = { companyId };
+    if (filters.customerId) query.customerId = filters.customerId;
+    if (filters.status) query.status = filters.status;
+    if (filters.q) {
+      const q = new RegExp(filters.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [
+        { customerName: q },
+        { customerId: q },
+        { salesEmployeeName: q },
+        { upgradedByName: q },
+      ];
+    }
+    if (role === Roles.SALES) {
+      query.$or = [
+        { salesEmployeeId: new Types.ObjectId(employeeId) },
+        { upgradedBy: new Types.ObjectId(employeeId) },
+      ];
+    }
+    return Upgrade.find(query).sort({ createdAt: -1 });
   }
 
   static async createVerification(companyId: string, data: Partial<SaleInput>, currentUserId?: string) {

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CompanySalesService = void 0;
 const Lead_1 = require("../models/Lead");
 const Sale_1 = require("../models/Sale");
+const Upgrade_1 = require("../models/Upgrade");
 const Employee_1 = require("../models/Employee");
 const Counter_1 = require("../models/Counter");
 const index_1 = require("../constants/index");
@@ -126,6 +127,7 @@ class CompanySalesService {
                 if (!salesEmpId && employeeId)
                     salesEmpId = new mongoose_1.Types.ObjectId(employeeId);
                 const salesEmpName = lead.assignedToName || lead.connectedBy || 'Sales Employee';
+                const salesEmployeeRemark = (data.salesEmployeeRemark ?? lead.salesEmployeeRemark ?? '').trim();
                 const finalSaleAmount = Number(data.finalAmount ?? data.saleAmount ?? lead.saleAmount ?? 0);
                 const mainAmount = Number(data.mainAmount ?? 0);
                 const upgradedAmount = Number(data.upgradedAmount ?? 0);
@@ -164,9 +166,7 @@ class CompanySalesService {
                     paymentMethod: data.salePaymentMethod || lead.salePaymentMethod || 'Card',
                     saleDate: currentBDate,
                     businessDate: currentBDate,
-                    verificationStatus: 'PENDING',
-                    feedbackStatus: 'PENDING',
-                    feedbackBusinessDate: nextBDate,
+                    salesEmployeeRemark,
                 });
                 await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
                 (0, socket_1.emitCompanyEvent)('sale:created', sale);
@@ -237,6 +237,7 @@ class CompanySalesService {
             if (existingSale)
                 return existingSale;
         }
+        const salesEmployeeRemark = (data.salesEmployeeRemark || '').trim();
         const currentBDate = (0, businessDate_1.getBusinessDateString)();
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -273,6 +274,7 @@ class CompanySalesService {
             finalAmount,
             saleDate: data.saleDate || currentBDate,
             businessDate: currentBDate,
+            salesEmployeeRemark,
             verificationStatus: 'PENDING',
             feedbackStatus: 'PENDING',
             feedbackBusinessDate: nextBDate,
@@ -297,6 +299,7 @@ class CompanySalesService {
         const finalAmount = Number(data.finalAmount ?? derivedFinalAmount);
         const updated = await Sale_1.Sale.findOneAndUpdate({ companyId, _id: id }, {
             ...data,
+            salesEmployeeRemark: data.salesEmployeeRemark !== undefined ? data.salesEmployeeRemark.trim() : existing.salesEmployeeRemark || '',
             mainAmount,
             upgradedAmount,
             salesTaxType,
@@ -331,6 +334,101 @@ class CompanySalesService {
             throw { statusCode: 404, message: 'Sale not found.' };
         (0, socket_1.emitCompanyEvent)('sale:deleted', { id });
         return { id };
+    }
+    static async searchCustomers(companyId, role, employeeId, q) {
+        const search = (q || '').trim();
+        if (!search) {
+            if (role === index_1.Roles.SALES) {
+                return Sale_1.Sale.find({ companyId, salesEmployeeId: new mongoose_1.Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50);
+            }
+            return Sale_1.Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
+        }
+        const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        const query = { companyId };
+        if (role === index_1.Roles.SALES) {
+            query.$or = [
+                { salesEmployeeId: new mongoose_1.Types.ObjectId(employeeId) },
+                { connectedBy: employeeId },
+            ];
+        }
+        const matches = await Sale_1.Sale.find({
+            ...query,
+            $or: [
+                { name: regex },
+                { customerEmail: regex },
+                { customerId: regex },
+                { alternateContactNo: regex },
+                { leadId: regex },
+                { _id: regex },
+            ],
+        }).sort({ createdAt: -1 }).limit(100);
+        if (matches.length > 0)
+            return matches;
+        return Sale_1.Sale.find({ companyId, $or: [
+                { name: regex },
+                { customerEmail: regex },
+                { customerId: regex },
+                { alternateContactNo: regex },
+                { leadId: regex },
+                { _id: regex },
+            ] }).sort({ createdAt: -1 }).limit(100);
+    }
+    static async createUpgrade(companyId, data, currentUserId, currentUserName) {
+        const customerId = data.customerId || (await (0, Counter_1.getNextCustomerId)(companyId));
+        const upgradeAmount = Number(data.upgradeAmount ?? data.amount ?? 0);
+        const salesTaxType = data.salesTaxType || 'PERCENTAGE';
+        const salesTaxValue = Number(data.salesTaxValue ?? 0);
+        const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? (upgradeAmount * salesTaxValue) / 100 : salesTaxValue));
+        const finalAmount = Number(data.finalAmount ?? (upgradeAmount + salesTaxAmount));
+        const saleForUpgrade = await Sale_1.Sale.findOne({ companyId, customerId }).sort({ createdAt: -1 });
+        const existingUpgrades = await Upgrade_1.Upgrade.countDocuments({ companyId, customerId });
+        const upgrade = await Upgrade_1.Upgrade.create({
+            companyId,
+            customerId,
+            customerName: data.customerName || saleForUpgrade?.name || 'Customer',
+            salesEmployeeId: saleForUpgrade?.salesEmployeeId || new mongoose_1.Types.ObjectId(currentUserId || ''),
+            salesEmployeeName: saleForUpgrade?.salesEmployeeName || currentUserName || 'Sales Employee',
+            upgradedBy: currentUserId ? new mongoose_1.Types.ObjectId(currentUserId) : undefined,
+            upgradedByName: currentUserName || 'Sales Employee',
+            originalSaleId: saleForUpgrade?._id,
+            upgradeNumber: existingUpgrades + 1,
+            upgradeAmount,
+            salesTaxType,
+            salesTaxValue,
+            salesTaxAmount,
+            finalAmount,
+            paymentMethod: data.paymentMethod || saleForUpgrade?.paymentMethod || 'Card',
+            salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
+            status: 'PENDING',
+            techSupportStatus: 'NONE',
+            verificationStatus: 'PENDING',
+            feedbackStatus: 'PENDING',
+        });
+        (0, socket_1.emitCompanyEvent)('upgrade:created', upgrade);
+        return upgrade;
+    }
+    static async getUpgrades(companyId, role, employeeId, filters = {}) {
+        const query = { companyId };
+        if (filters.customerId)
+            query.customerId = filters.customerId;
+        if (filters.status)
+            query.status = filters.status;
+        if (filters.q) {
+            const q = new RegExp(filters.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            query.$or = [
+                { customerName: q },
+                { customerId: q },
+                { salesEmployeeName: q },
+                { upgradedByName: q },
+            ];
+        }
+        if (role === index_1.Roles.SALES) {
+            query.$or = [
+                { salesEmployeeId: new mongoose_1.Types.ObjectId(employeeId) },
+                { upgradedBy: new mongoose_1.Types.ObjectId(employeeId) },
+            ];
+        }
+        return Upgrade_1.Upgrade.find(query).sort({ createdAt: -1 });
     }
     static async createVerification(companyId, data, currentUserId) {
         const currentBDate = (0, businessDate_1.getBusinessDateString)();
