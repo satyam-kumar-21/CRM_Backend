@@ -17,12 +17,19 @@ export interface ISale extends Document {
   plan?: string;
   paymentMerchant?: string;
   connectedBy: string;
+  customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
   salesEmployeeId?: Types.ObjectId;
   salesEmployeeName?: string;
   techSupportEmployeeId?: Types.ObjectId;
   techSupportEmployeeName?: string;
   techSupportCompletedAt?: Date;
   amount: number;
+  mainAmount?: number;
+  upgradedAmount?: number;
+  salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT';
+  salesTaxValue?: number;
+  salesTaxAmount?: number;
+  finalAmount?: number;
   paymentMethod: PaymentMethod;
   saleDate: string;
   businessDate: string;
@@ -34,6 +41,8 @@ export interface ISale extends Document {
 
   // Verification fields
   verificationStatus: 'PENDING' | 'IN_PROGRESS' | 'SUCCESSFUL' | 'FAILED';
+  verificationEmployeeId?: Types.ObjectId | null;
+  verificationEmployeeName?: string;
   verifiedBy?: Types.ObjectId | null;
   verifiedByName?: string;
   verifiedAt?: Date | null;
@@ -70,12 +79,19 @@ const SaleSchema = new Schema<ISale>(
     plan: { type: String, default: '', trim: true },
     paymentMerchant: { type: String, default: '', trim: true },
     connectedBy: { type: String, required: true, trim: true },
+    customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
     salesEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },
     salesEmployeeName: { type: String, default: '', trim: true },
     techSupportEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },
     techSupportEmployeeName: { type: String, default: '', trim: true },
     techSupportCompletedAt: { type: Date },
     amount: { type: Number, required: true, min: 0 },
+    mainAmount: { type: Number, default: 0 },
+    upgradedAmount: { type: Number, default: 0 },
+    salesTaxType: { type: String, enum: ['PERCENTAGE', 'DIRECT_AMOUNT'], default: 'PERCENTAGE' },
+    salesTaxValue: { type: Number, default: 0 },
+    salesTaxAmount: { type: Number, default: 0 },
+    finalAmount: { type: Number, default: 0 },
     paymentMethod: { type: String, enum: ['Card', 'Check', 'Wire Transfer', 'Cash', 'UPI', 'Bank Transfer', 'Online', 'Other'], required: true },
     saleDate: { type: String, required: true },
     businessDate: { type: String, default: '' },
@@ -87,6 +103,8 @@ const SaleSchema = new Schema<ISale>(
 
     // Verification schema
     verificationStatus: { type: String, enum: ['PENDING', 'IN_PROGRESS', 'SUCCESSFUL', 'FAILED'], default: 'PENDING' },
+    verificationEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
+    verificationEmployeeName: { type: String, default: '', trim: true },
     verifiedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
     verifiedByName: { type: String, default: '' },
     verifiedAt: { type: Date, default: null },

@@ -19,6 +19,7 @@ export interface ILead extends Document {
   assignedTo?: Types.ObjectId;
   assignedToName?: string;
   acceptedAt?: Date;
+  customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
   isSale: 'yes' | 'no';
   // Amount captured right after isSale=yes (before tech support)
   saleAmount?: number;
@@ -55,6 +56,7 @@ const LeadSchema = new Schema<ILead>(
     assignedTo: { type: Schema.Types.ObjectId, ref: 'Employee' },
     assignedToName: { type: String, default: '', trim: true },
     acceptedAt: { type: Date },
+    customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
     isSale: { type: String, enum: ['yes', 'no'], default: 'no' },
     saleAmount: { type: Number },
     salePaymentMethod: { type: String, enum: ['Card', 'Check', 'Wire Transfer', 'Cash', 'UPI', 'Bank Transfer', 'Online', 'Other'] },

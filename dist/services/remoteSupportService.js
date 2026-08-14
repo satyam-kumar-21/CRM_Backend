@@ -6,6 +6,7 @@ const RemoteSupport_1 = require("../models/RemoteSupport");
 const Lead_1 = require("../models/Lead");
 const Employee_1 = require("../models/Employee");
 const index_1 = require("../constants/index");
+const socket_1 = require("../realtime/socket");
 class RemoteSupportService {
     static async list(companyId, role, employeeId, filters = {}) {
         const query = { companyId };
@@ -71,6 +72,10 @@ class RemoteSupportService {
             issueReason: data.issueReason,
             status: 'PENDING',
         });
+        if (data.leadId) {
+            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: data.leadId }, { techSupportStatus: 'PENDING' });
+        }
+        (0, socket_1.emitCompanyEvent)('support:created', record);
         return record;
     }
     static async accept(companyId, employeeId, id) {
@@ -95,6 +100,14 @@ class RemoteSupportService {
         if (!record) {
             throw { statusCode: 409, message: 'This support request has already been accepted or assigned to another employee.' };
         }
+        if (record.leadId) {
+            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                techSupportStatus: 'ACCEPTED',
+                techSupportEmployeeId: employee._id,
+                techSupportEmployeeName: employee.name,
+            });
+        }
+        (0, socket_1.emitCompanyEvent)('support:accepted', record);
         return record;
     }
     static async reject(companyId, employeeId, id, rejectedReason) {
@@ -116,8 +129,13 @@ class RemoteSupportService {
         }
         await record.save();
         if (record.leadId) {
-            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, { status: 'COMPLETED', completionReason: record.rejectedReason }, { new: true });
+            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                status: 'COMPLETED',
+                completionReason: record.rejectedReason,
+                techSupportStatus: 'FAILED',
+            }, { new: true });
         }
+        (0, socket_1.emitCompanyEvent)('support:rejected', record);
         return record;
     }
     static async complete(companyId, employeeId, id, data) {
@@ -132,6 +150,15 @@ class RemoteSupportService {
                 record.techSupportEmployeeId = new mongoose_1.Types.ObjectId(employeeId);
                 record.techSupportEmployeeName = employee?.name || 'Tech Support';
             }
+            if (record.leadId) {
+                await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                    techSupportStatus: 'SUCCESSFUL',
+                    techSupportCompletedAt: new Date(),
+                    techSupportEmployeeId: record.techSupportEmployeeId,
+                    techSupportEmployeeName: record.techSupportEmployeeName,
+                });
+            }
+            (0, socket_1.emitCompanyEvent)('support:completed', record);
         }
         else if (data.status === 'FAILED') {
             if (!data.failedReason || !data.failedReason.trim()) {
@@ -147,8 +174,15 @@ class RemoteSupportService {
                 record.techSupportEmployeeName = employee?.name || 'Tech Support';
             }
             if (record.leadId) {
-                await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, { status: 'COMPLETED', completionReason: record.failedReason }, { new: true });
+                await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                    status: 'COMPLETED',
+                    completionReason: record.failedReason,
+                    techSupportStatus: 'FAILED',
+                    techSupportEmployeeId: record.techSupportEmployeeId,
+                    techSupportEmployeeName: record.techSupportEmployeeName,
+                }, { new: true });
             }
+            (0, socket_1.emitCompanyEvent)('support:failed', record);
         }
         await record.save();
         return record;
@@ -165,6 +199,14 @@ class RemoteSupportService {
         }, { new: true, runValidators: true });
         if (!record)
             throw { statusCode: 404, message: 'Remote support record not found.' };
+        if (record.leadId) {
+            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                techSupportStatus: 'ACCEPTED',
+                techSupportEmployeeId: techEmployee._id,
+                techSupportEmployeeName: techEmployee.name,
+            });
+        }
+        (0, socket_1.emitCompanyEvent)('support:assigned', record);
         return record;
     }
     static async update(companyId, role, employeeId, id, data) {
@@ -219,8 +261,16 @@ class RemoteSupportService {
             await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
                 status: 'COMPLETED',
                 completionReason: data.status === 'FAILED' ? record.failedReason : record.rejectedReason,
+                techSupportStatus: 'FAILED',
             }, { new: true, runValidators: true });
         }
+        else if (data.status === 'SUCCESSFUL' && record.leadId) {
+            await Lead_1.Lead.findOneAndUpdate({ companyId, _id: record.leadId }, {
+                techSupportStatus: 'SUCCESSFUL',
+                techSupportCompletedAt: new Date(),
+            });
+        }
+        (0, socket_1.emitCompanyEvent)('support:updated', record);
         return record;
     }
     static async delete(companyId, role, employeeId, id) {
@@ -238,6 +288,7 @@ class RemoteSupportService {
             }
         }
         await record.deleteOne();
+        (0, socket_1.emitCompanyEvent)('support:updated', { id, deleted: true });
         return;
     }
     static async summarize(companyId, role, employeeId) {

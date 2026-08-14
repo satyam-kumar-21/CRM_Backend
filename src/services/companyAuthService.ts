@@ -20,11 +20,12 @@ import { getBusinessDayEnd, getBusinessDayStart, getBusinessMonthRange, getBusin
 
 
 const messageWithSender = (message: IMessage, userId: string) => {
-  const sender = message.senderId as unknown as { _id?: unknown; name?: string };
+  const sender = (message.senderId || null) as unknown as { _id?: unknown; name?: string } | null;
+  const senderId = sender?._id ? String(sender._id) : null;
   return {
     ...message.toObject(),
-    senderName: sender.name || 'Workspace member',
-    isMine: String(sender._id || sender) === userId,
+    senderName: sender?.name || 'Workspace member',
+    isMine: senderId === userId,
     isSeen: message.readBy?.some((readerId) => readerId.toString() !== userId) || false,
     isEdited: Boolean(message.editedAt),
   };
@@ -145,72 +146,85 @@ export class CompanyAuthService {
   }
 
   static async getDashboard(employeeId: string, companyId: string, role: Roles) {
-    const company = await Company.findById(companyId);
-    const employee = await Employee.findOne({ companyId, _id: employeeId });
+    let actualCompanyId = companyId;
+    let employee = await Employee.findOne({ companyId, _id: employeeId });
+
     if (!employee) {
-      throw { statusCode: 404, message: 'Employee not found.' };
+      employee = await Employee.findById(employeeId);
+      if (!employee) {
+        throw { statusCode: 401, message: 'Your session is invalid or expired. Please log in again.' };
+      }
+      actualCompanyId = employee.companyId.toString();
+    } else {
+      actualCompanyId = employee.companyId.toString();
     }
-    const employeeCount = await Employee.countDocuments({ companyId });
+
+    const company = await Company.findById(actualCompanyId);
+    if (!company) {
+      throw { statusCode: 401, message: 'Your company session is no longer available. Please log in again.' };
+    }
+
+    const employeeCount = await Employee.countDocuments({ companyId: actualCompanyId });
     const isAdmin = role === Roles.COMPANY_ADMIN;
     const pendingLeaveCount = isAdmin
       ? await Leave.countDocuments({ companyId, status: LeaveStatus.PENDING })
       : await Leave.countDocuments({ companyId, employeeId });
     const unreadAnnouncementCount = await Announcement.countDocuments({
-      companyId,
+      companyId: actualCompanyId,
       $or: [{ targetRoles: { $size: 0 } }, { targetRoles: role }],
       readBy: { $ne: employee._id },
     });
     const unreadNotificationCount = await Notification.countDocuments({
-      companyId,
+      companyId: actualCompanyId,
       recipientId: employee._id,
       isRead: false,
     });
 
     const nonFailedSaleFilter: any = { failed: { $ne: true } };
-    const companyTotalLeads = await Lead.countDocuments({ companyId });
-    const companyConnectedLeads = await Lead.countDocuments({ companyId, connected: 'yes' });
-    const companyPendingLeads = await Lead.countDocuments({ companyId, connected: 'no' });
-    const companyTotalSales = await Sale.countDocuments({ companyId, ...nonFailedSaleFilter });
-    const companyFailedSales = await Sale.countDocuments({ companyId, failed: true });
+    const companyTotalLeads = await Lead.countDocuments({ companyId: actualCompanyId });
+    const companyConnectedLeads = await Lead.countDocuments({ companyId: actualCompanyId, connected: 'yes' });
+    const companyPendingLeads = await Lead.countDocuments({ companyId: actualCompanyId, connected: 'no' });
+    const companyTotalSales = await Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter });
+    const companyFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true });
     const companyRevenueResult = await Sale.aggregate([
-      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter } },
+      { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
     const companyRevenue = companyRevenueResult[0]?.total || 0;
 
     const employeeLeadFilter = {
-      companyId,
+      companyId: actualCompanyId,
       $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }],
     };
     const employeeLeads = await Lead.countDocuments(employeeLeadFilter);
     const employeeConnectedLeads = await Lead.countDocuments({ ...employeeLeadFilter, connected: 'yes' });
     const employeePendingLeads = await Lead.countDocuments({ ...employeeLeadFilter, connected: 'no' });
-    const employeeSalesFilter = { companyId, ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] };
+    const employeeSalesFilter = { companyId: actualCompanyId, ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] };
     const employeeSales = await Sale.countDocuments(employeeSalesFilter);
-    const employeeFailedSales = await Sale.countDocuments({ companyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
+    const employeeFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
     const employeeRevenueResult = await Sale.aggregate([
-      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
+      { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
     const employeeRevenue = employeeRevenueResult[0]?.total || 0;
 
-    const groups = await Group.find(isAdmin ? { companyId } : {
-      companyId,
+    const groups = await Group.find(isAdmin ? { companyId: actualCompanyId } : {
+      companyId: actualCompanyId,
       $or: [
         { privacy: 'public' },
         { privacy: 'private', members: employee._id },
       ],
     });
-    const chatEmployees = isAdmin ? [] : await Promise.all((await Employee.find({ companyId, isSuspended: false, _id: { $ne: employeeId } }).select('_id employeeId name role email')).map(async (chatEmployee) => {
+    const chatEmployees = isAdmin ? [] : await Promise.all((await Employee.find({ companyId: actualCompanyId, isSuspended: false, _id: { $ne: employeeId } }).select('_id employeeId name role email')).map(async (chatEmployee) => {
       const [latestMessage, unreadCount] = await Promise.all([
-        Message.findOne({ companyId, $or: [{ senderId: chatEmployee._id, recipientId: employeeId }, { senderId: employeeId, recipientId: chatEmployee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
-        Message.countDocuments({ companyId, senderId: chatEmployee._id, recipientId: employeeId, readBy: { $ne: employeeId } }),
+        Message.findOne({ companyId: actualCompanyId, $or: [{ senderId: chatEmployee._id, recipientId: employeeId }, { senderId: employeeId, recipientId: chatEmployee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
+        Message.countDocuments({ companyId: actualCompanyId, senderId: chatEmployee._id, recipientId: employeeId, readBy: { $ne: employeeId } }),
       ]);
       return { ...chatEmployee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
     }));
     const visibleGroupIds = groups.map((group) => group._id);
-    const messages = await Message.find(isAdmin ? { companyId } : {
-      companyId,
+    const messages = await Message.find(isAdmin ? { companyId: actualCompanyId } : {
+      companyId: actualCompanyId,
       $or: [
         { groupId: { $in: visibleGroupIds } },
         { senderId: employee._id },
@@ -220,28 +234,28 @@ export class CompanyAuthService {
     const recentMessages = messages.map((message) => messageWithSender(message, employeeId));
     const groupMetadata = await Promise.all(groups.map(async (group) => {
       const [latestMessage, unreadCount] = await Promise.all([
-        Message.findOne({ companyId, groupId: group._id }).sort({ createdAt: -1 }).select('createdAt'),
-        Message.countDocuments({ companyId, groupId: group._id, senderId: { $ne: employeeId }, readBy: { $ne: employeeId } }),
+        Message.findOne({ companyId: actualCompanyId, groupId: group._id }).sort({ createdAt: -1 }).select('createdAt'),
+        Message.countDocuments({ companyId: actualCompanyId, groupId: group._id, senderId: { $ne: employeeId }, readBy: { $ne: employeeId } }),
       ]);
       return { id: group._id.toString(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
     }));
 
-    const remoteSupportSummary = await RemoteSupportService.summarize(companyId, role, employeeId);
-    const projectSummary = await ProjectService.summary(companyId, role, employeeId);
+    const remoteSupportSummary = await RemoteSupportService.summarize(actualCompanyId, role, employeeId);
+    const projectSummary = await ProjectService.summary(actualCompanyId, role, employeeId);
 
     // Today's business-day metrics
     const todayStart = getBusinessDayStart();
     const todayEnd = getBusinessDayEnd();
-    const todayLeads = await Lead.countDocuments({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const todaySalesCount = await Sale.countDocuments({ companyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayLeads = await Lead.countDocuments({ companyId: actualCompanyId, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todaySalesCount = await Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } });
     const todaySalesAgg = await Sale.aggregate([
-      { $match: { companyId: new Types.ObjectId(companyId), ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } } },
+      { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
     const todaySalesAmount = todaySalesAgg[0]?.total || 0;
-    const todayFailedSales = await Sale.countDocuments({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
-    const todayRemoteSuccessful = await RemoteSupport.countDocuments({ companyId, status: 'SUCCESSFUL', dateTime: { $gte: todayStart, $lt: todayEnd } });
-    const todayRemoteFailed = await RemoteSupport.countDocuments({ companyId, status: 'FAILED', dateTime: { $gte: todayStart, $lt: todayEnd } });
+    const todayFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteSuccessful = await RemoteSupport.countDocuments({ companyId: actualCompanyId, status: 'SUCCESSFUL', dateTime: { $gte: todayStart, $lt: todayEnd } });
+    const todayRemoteFailed = await RemoteSupport.countDocuments({ companyId: actualCompanyId, status: 'FAILED', dateTime: { $gte: todayStart, $lt: todayEnd } });
     const todayRemoteTotal = todayRemoteSuccessful + todayRemoteFailed;
 
     const currentMonth = getBusinessMonthString();
@@ -284,10 +298,17 @@ export class CompanyAuthService {
     ]).exec();
 
     // Lists for tabular report (limited)
-    const todaysLeadsList = await Lead.find({ companyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
-    const todaysSalesList = await Sale.find({ companyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
-    const todaysFailedSalesList = await Sale.find({ companyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
-    const todaysRemoteList = await RemoteSupportService.list(companyId, role, employeeId, { fromDate: todayStart.toISOString(), toDate: todayEnd.toISOString() });
+    const todaysLeadsList = await Lead.find({ companyId: actualCompanyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysSalesList = await Sale.find({ companyId: actualCompanyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysFailedSalesList = await Sale.find({ companyId: actualCompanyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
+    const todaysRemoteList = await RemoteSupportService.list(actualCompanyId, role, employeeId, { fromDate: todayStart.toISOString(), toDate: todayEnd.toISOString() });
+
+    // Verification metrics for today's business day
+    const todayVerificationsPending = await Sale.countDocuments({ companyId: actualCompanyId, verificationStatus: 'PENDING', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayVerificationsSuccessful = await Sale.countDocuments({ companyId: actualCompanyId, verificationStatus: 'SUCCESSFUL', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayVerificationsFailed = await Sale.countDocuments({ companyId: actualCompanyId, verificationStatus: 'FAILED', createdAt: { $gte: todayStart, $lt: todayEnd } });
+    const todayVerificationsTotal = todayVerificationsPending + todayVerificationsSuccessful + todayVerificationsFailed;
+    const todaysVerificationsList = await Sale.find({ companyId: actualCompanyId, createdAt: { $gte: todayStart, $lt: todayEnd } }).sort({ createdAt: -1 }).limit(500);
 
     return {
       company: {
@@ -339,6 +360,12 @@ export class CompanyAuthService {
           salesCount: todaySalesCount,
           salesAmount: todaySalesAmount,
           failedSales: todayFailedSales,
+          verifications: {
+            pending: todayVerificationsPending,
+            successful: todayVerificationsSuccessful,
+            failed: todayVerificationsFailed,
+            total: todayVerificationsTotal,
+          },
           remote: {
             successful: todayRemoteSuccessful,
             failed: todayRemoteFailed,
@@ -349,6 +376,8 @@ export class CompanyAuthService {
             sales: todaysSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
             failed: todaysFailedSalesList.map((s) => ({ _id: s._id, name: s.name, amount: s.amount, connectedBy: s.connectedBy, saleDate: s.saleDate, failed: s.failed })),
             remote: todaysRemoteList.map((r: any) => ({ _id: r._id, customerName: r.customerName, salesEmployeeName: r.salesEmployeeName, techSupportEmployeeName: r.techSupportEmployeeName, status: r.status, dateTime: r.dateTime })),
+
+            verifications: todaysVerificationsList.map((v: any) => ({ _id: v._id, name: v.name, amount: v.amount, verificationEmployeeName: v.verificationEmployeeName, verificationStatus: v.verificationStatus, feedbackRating: v.feedbackRating })),
           },
         },
       },
@@ -360,9 +389,9 @@ export class CompanyAuthService {
       remoteSupportSummary,
       projectSummary,
       leave: {
-        present: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.PRESENT }),
-        absent: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.ABSENT }),
-        holiday: await Attendance.countDocuments({ companyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.HOLIDAY }),
+        present: await Attendance.countDocuments({ companyId: actualCompanyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.PRESENT }),
+        absent: await Attendance.countDocuments({ companyId: actualCompanyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.ABSENT }),
+        holiday: await Attendance.countDocuments({ companyId: actualCompanyId, date: { $gte: getBusinessDayStart(), $lt: getBusinessDayEnd() }, status: AttendanceStatus.HOLIDAY }),
         totalEmployees: employeeCount,
       },
     };

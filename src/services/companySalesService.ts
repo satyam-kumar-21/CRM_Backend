@@ -22,8 +22,15 @@ type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   connectedBy?: string;
   assignedTo?: string;
   assignedToName?: string;
+  customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
   isSale?: 'yes' | 'no';
   saleAmount?: number;
+  mainAmount?: number;
+  upgradedAmount?: number;
+  salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT';
+  salesTaxValue?: number;
+  salesTaxAmount?: number;
+  finalAmount?: number;
   salePaymentMethod?: ILead['salePaymentMethod'];
   paymentConfirmed?: 'yes' | 'no';
   finalStatus?: 'PENDING_PAYMENT' | 'CLOSED' | 'PAYMENT_FAILED';
@@ -39,6 +46,13 @@ type SaleInput = Omit<Partial<ISale>, 'companyId'> & {
   connectedBy: string;
   customerId?: string;
   customerEmail?: string;
+  customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
+  mainAmount?: number;
+  upgradedAmount?: number;
+  salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT';
+  salesTaxValue?: number;
+  salesTaxAmount?: number;
+  finalAmount?: number;
   alternateContactNo?: string;
   customerAddress?: string;
   issues?: string;
@@ -56,6 +70,33 @@ type SaleInput = Omit<Partial<ISale>, 'companyId'> & {
 };
 
 export class CompanySalesService {
+  private static async assignVerificationEmployeeIfMissing(companyId: string, saleId: string, employeeId: string, employeeName: string) {
+    const sale = await Sale.findOne({ companyId, _id: saleId, failed: { $ne: true } });
+    if (!sale) return;
+    if (!sale.verificationEmployeeId) {
+      sale.verificationEmployeeId = new Types.ObjectId(employeeId);
+      sale.verificationEmployeeName = employeeName || sale.verificationEmployeeName || 'Verification Employee';
+      await sale.save();
+    }
+  }
+
+  private static async assignVerificationEmployeeForSale(companyId: string, sale: ISale) {
+    if (sale.failed === true || sale.verificationEmployeeId) return sale;
+
+    const verificationEmployee = await Employee.findOne({
+      companyId,
+      role: Roles.VERIFICATION,
+      isSuspended: false,
+    }).sort({ createdAt: 1 }).select('_id name');
+
+    if (!verificationEmployee) return sale;
+
+    sale.verificationEmployeeId = verificationEmployee._id;
+    sale.verificationEmployeeName = verificationEmployee.name;
+    await sale.save();
+    return sale;
+  }
+
   static async getLeads(companyId: string, role: string, employeeId: string) {
     if (role === Roles.COMPANY_ADMIN) {
       return Lead.find({ companyId }).sort({ createdAt: -1 });
@@ -99,6 +140,7 @@ export class CompanySalesService {
       ...data,
       connected: data.connected || 'no',
       connectedBy: data.connectedBy || '',
+      customerType: data.customerType || 'NEW',
       isSale: data.isSale || 'no',
       status: data.status || 'OPEN',
       completionReason: data.completionReason || '',
@@ -157,6 +199,13 @@ export class CompanySalesService {
         let salesEmpId = lead.assignedTo ? new Types.ObjectId(lead.assignedTo.toString()) : undefined;
         if (!salesEmpId && employeeId) salesEmpId = new Types.ObjectId(employeeId);
         const salesEmpName = lead.assignedToName || lead.connectedBy || 'Sales Employee';
+        const finalSaleAmount = Number(data.finalAmount ?? data.saleAmount ?? lead.saleAmount ?? 0);
+        const mainAmount = Number(data.mainAmount ?? 0);
+        const upgradedAmount = Number(data.upgradedAmount ?? 0);
+        const salesTaxType = data.salesTaxType || 'PERCENTAGE';
+        const salesTaxValue = Number(data.salesTaxValue ?? 0);
+        const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? ((mainAmount + upgradedAmount) * salesTaxValue) / 100 : salesTaxValue));
+        const computedFinalAmount = Number(data.finalAmount ?? ((mainAmount + upgradedAmount + salesTaxAmount) || finalSaleAmount));
 
         const customerId = await getNextCustomerId(companyId);
 
@@ -164,7 +213,7 @@ export class CompanySalesService {
           companyId,
           leadId: id,
           customerId,
-          name: lead.name,
+          name: data.name || lead.name,
           customerEmail: data.customerEmail || lead.customerEmail || '',
           alternateContactNo: data.alternateContactNo || lead.alternateContactNo || '',
           customerAddress: data.customerAddress || lead.customerAddress || '',
@@ -174,12 +223,19 @@ export class CompanySalesService {
           plan: data.plan || lead.plan || '',
           paymentMerchant: data.paymentMerchant || lead.paymentMerchant || '',
           connectedBy: lead.connectedBy,
+          customerType: data.customerType || lead.customerType || 'NEW',
           salesEmployeeId: salesEmpId,
           salesEmployeeName: salesEmpName,
           techSupportEmployeeId: lead.techSupportEmployeeId,
           techSupportEmployeeName: lead.techSupportEmployeeName,
           techSupportCompletedAt: lead.techSupportCompletedAt,
-          amount: (data.saleAmount !== undefined ? data.saleAmount : lead.saleAmount) || 0,
+          amount: finalSaleAmount || computedFinalAmount || 0,
+          mainAmount: mainAmount || 0,
+          upgradedAmount: upgradedAmount || 0,
+          salesTaxType,
+          salesTaxValue,
+          salesTaxAmount,
+          finalAmount: computedFinalAmount || finalSaleAmount || 0,
           paymentMethod: data.salePaymentMethod || lead.salePaymentMethod || 'Card',
           saleDate: currentBDate,
           businessDate: currentBDate,
@@ -187,6 +243,9 @@ export class CompanySalesService {
           feedbackStatus: 'PENDING',
           feedbackBusinessDate: nextBDate,
         });
+
+        await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
+
         emitCompanyEvent('sale:created', sale);
       }
 
@@ -282,14 +341,29 @@ export class CompanySalesService {
       salesEmpName = currentUserName;
     }
 
+    const mainAmount = Number(data.mainAmount ?? 0);
+    const upgradedAmount = Number(data.upgradedAmount ?? 0);
+    const salesTaxType = data.salesTaxType || 'PERCENTAGE';
+    const salesTaxValue = Number(data.salesTaxValue ?? 0);
+    const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? ((mainAmount + upgradedAmount) * salesTaxValue) / 100 : salesTaxValue));
+    const derivedFinalAmount = Number(mainAmount + upgradedAmount + salesTaxAmount || 0);
+    const finalAmount = Number(data.finalAmount ?? (data.amount ?? derivedFinalAmount));
     const customerId = data.customerId || (await getNextCustomerId(companyId));
 
     const sale = await Sale.create({
       ...data,
       companyId,
       customerId,
+      customerType: data.customerType || 'NEW',
       salesEmployeeId: salesEmpId,
       salesEmployeeName: salesEmpName,
+      amount: Number(data.amount ?? finalAmount),
+      mainAmount,
+      upgradedAmount,
+      salesTaxType,
+      salesTaxValue,
+      salesTaxAmount,
+      finalAmount,
       saleDate: data.saleDate || currentBDate,
       businessDate: currentBDate,
       verificationStatus: 'PENDING',
@@ -301,15 +375,40 @@ export class CompanySalesService {
       await Lead.findOneAndUpdate({ companyId, _id: data.leadId }, { isSale: 'yes', status: 'COMPLETED' });
     }
 
+    await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
     emitCompanyEvent('sale:created', sale);
     return sale;
   }
 
   static async updateSale(companyId: string, id: string, data: Partial<SaleInput>) {
-    const sale = await Sale.findOneAndUpdate({ companyId, _id: id }, data, { new: true, runValidators: true });
-    if (!sale) throw { statusCode: 404, message: 'Sale not found.' };
-    emitCompanyEvent('sale:updated', sale);
-    return sale;
+    const existing = await Sale.findOne({ companyId, _id: id });
+    if (!existing) throw { statusCode: 404, message: 'Sale not found.' };
+
+    const mainAmount = Number(data.mainAmount ?? existing.mainAmount ?? 0);
+    const upgradedAmount = Number(data.upgradedAmount ?? existing.upgradedAmount ?? 0);
+    const salesTaxType = data.salesTaxType || existing.salesTaxType || 'PERCENTAGE';
+    const salesTaxValue = Number(data.salesTaxValue ?? existing.salesTaxValue ?? 0);
+    const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? ((mainAmount + upgradedAmount) * salesTaxValue) / 100 : salesTaxValue));
+    const derivedFinalAmount = Number(mainAmount + upgradedAmount + salesTaxAmount || existing.finalAmount || existing.amount || 0);
+    const finalAmount = Number(data.finalAmount ?? derivedFinalAmount);
+
+    const updated = await Sale.findOneAndUpdate(
+      { companyId, _id: id },
+      {
+        ...data,
+        mainAmount,
+        upgradedAmount,
+        salesTaxType,
+        salesTaxValue,
+        salesTaxAmount,
+        finalAmount,
+        amount: Number(data.amount ?? finalAmount),
+      },
+      { new: true, runValidators: true }
+    );
+    if (!updated) throw { statusCode: 404, message: 'Sale not found.' };
+    emitCompanyEvent('sale:updated', updated);
+    return updated;
   }
 
   static async markSaleFailed(companyId: string, id: string, failedReason: string, failedById: string, failedByName: string) {
@@ -337,19 +436,117 @@ export class CompanySalesService {
     return { id };
   }
 
+  static async createVerification(companyId: string, data: Partial<SaleInput>, currentUserId?: string) {
+    const currentBDate = getBusinessDateString();
+    const amount = Number(data.amount ?? data.finalAmount ?? 0);
+    const mainAmount = Number(data.mainAmount ?? amount);
+    const upgradedAmount = Number(data.upgradedAmount ?? 0);
+    const salesTaxType = data.salesTaxType || 'PERCENTAGE';
+    const salesTaxValue = Number(data.salesTaxValue ?? 0);
+    const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? ((mainAmount + upgradedAmount) * salesTaxValue) / 100 : salesTaxValue));
+    const derivedFinalAmount = Number(mainAmount + upgradedAmount + salesTaxAmount || amount || 0);
+    const finalAmount = Number(data.finalAmount ?? derivedFinalAmount);
+    const sale = await Sale.create({
+      ...data,
+      companyId,
+      name: data.name || 'Customer',
+      country: data.country || 'Unknown',
+      system: data.system || 'N/A',
+      connectedBy: data.connectedBy || 'Admin',
+      customerType: data.customerType || 'NEW',
+      salesEmployeeId: data.salesEmployeeId ? new Types.ObjectId(data.salesEmployeeId) : currentUserId ? new Types.ObjectId(currentUserId) : undefined,
+      salesEmployeeName: data.salesEmployeeName || data.connectedBy || 'Admin',
+      amount,
+      mainAmount,
+      upgradedAmount,
+      salesTaxType,
+      salesTaxValue,
+      salesTaxAmount,
+      finalAmount,
+      paymentMethod: data.paymentMethod || 'Card',
+      saleDate: data.saleDate || currentBDate,
+      businessDate: currentBDate,
+      verificationStatus: data.verificationStatus || 'PENDING',
+      feedbackStatus: 'PENDING',
+    });
+    emitCompanyEvent('verification:updated', sale);
+    return sale;
+  }
+
+  static async updateVerification(companyId: string, id: string, data: Partial<SaleInput>) {
+    const existing = await Sale.findOne({ companyId, _id: id });
+    if (!existing) throw { statusCode: 404, message: 'Verification record not found.' };
+    const mainAmount = Number(data.mainAmount ?? existing.mainAmount ?? existing.amount ?? 0);
+    const upgradedAmount = Number(data.upgradedAmount ?? existing.upgradedAmount ?? 0);
+    const salesTaxType = data.salesTaxType || existing.salesTaxType || 'PERCENTAGE';
+    const salesTaxValue = Number(data.salesTaxValue ?? existing.salesTaxValue ?? 0);
+    const salesTaxAmount = Number(data.salesTaxAmount ?? (salesTaxType === 'PERCENTAGE' ? ((mainAmount + upgradedAmount) * salesTaxValue) / 100 : salesTaxValue));
+    const derivedFinalAmount = Number(mainAmount + upgradedAmount + salesTaxAmount || existing.finalAmount || existing.amount || 0);
+    const finalAmount = Number(data.finalAmount ?? derivedFinalAmount);
+    const updated = await Sale.findOneAndUpdate(
+      { companyId, _id: id },
+      {
+        ...data,
+        customerType: data.customerType || existing.customerType || 'NEW',
+        amount: Number(data.amount ?? finalAmount),
+        mainAmount,
+        upgradedAmount,
+        salesTaxType,
+        salesTaxValue,
+        salesTaxAmount,
+        finalAmount,
+      },
+      { new: true, runValidators: true }
+    );
+    if (!updated) throw { statusCode: 404, message: 'Verification record not found.' };
+    emitCompanyEvent('verification:updated', updated);
+    return updated;
+  }
+
+  static async deleteVerification(companyId: string, id: string) {
+    const result = await Sale.deleteOne({ companyId, _id: id });
+    if (!result.deletedCount) throw { statusCode: 404, message: 'Verification record not found.' };
+    emitCompanyEvent('verification:updated', { _id: id, companyId });
+    return { id };
+  }
+
   // Verification Methods
   static async getVerifications(companyId: string, role: string, employeeId: string, filters: { status?: string } = {}) {
+    if (role === Roles.VERIFICATION) {
+      const unassigned = await Sale.find({
+        companyId,
+        failed: { $ne: true },
+        verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] },
+        $or: [
+          { verificationEmployeeId: { $exists: false } },
+          { verificationEmployeeId: null },
+        ],
+      }).select('_id name');
+
+      for (const sale of unassigned) {
+        await CompanySalesService.assignVerificationEmployeeIfMissing(companyId, sale._id.toString(), employeeId, 'Verification Employee');
+      }
+    }
+
     const query: any = { companyId, failed: { $ne: true } };
     if (filters.status) query.verificationStatus = filters.status;
+    if (role === Roles.VERIFICATION) {
+      query.$or = [
+        { verificationEmployeeId: new Types.ObjectId(employeeId) },
+        { verificationEmployeeId: null },
+        { verificationEmployeeId: { $exists: false } },
+      ];
+    }
     return Sale.find(query).sort({ createdAt: -1 });
   }
 
-  static async startVerification(companyId: string, id: string) {
-    const sale = await Sale.findOneAndUpdate(
-      { companyId, _id: id },
-      { verificationStatus: 'IN_PROGRESS' },
-      { new: true, runValidators: true }
-    );
+  static async startVerification(companyId: string, id: string, employeeId: string, employeeName: string) {
+    const sale = await Sale.findOne({ companyId, _id: id });
+    if (!sale) throw { statusCode: 404, message: 'Sale record not found.' };
+    sale.verificationStatus = 'IN_PROGRESS';
+    sale.verificationEmployeeId = sale.verificationEmployeeId || new Types.ObjectId(employeeId);
+    sale.verificationEmployeeName = sale.verificationEmployeeName || employeeName;
+    await sale.save();
     if (!sale) throw { statusCode: 404, message: 'Sale record not found.' };
     emitCompanyEvent('verification:updated', sale);
     return sale;
@@ -399,6 +596,19 @@ export class CompanySalesService {
         { feedbackStatus: 'COMPLETED' }
       ]
     };
+
+    if (role === Roles.VERIFICATION || role === Roles.FEEDBACK) {
+      query.$and = [
+        {
+          $or: [
+            { verificationEmployeeId: new Types.ObjectId(employeeId) },
+            { verificationEmployeeId: null },
+            { verificationEmployeeId: { $exists: false } },
+          ],
+        },
+      ];
+    }
+
     if (filters.status) query.feedbackStatus = filters.status;
     return Sale.find(query).sort({ createdAt: -1 });
   }
@@ -460,12 +670,37 @@ export class CompanySalesService {
     }
 
     if (role === Roles.VERIFICATION) {
+      const unassigned = await Sale.find({
+        companyId,
+        failed: { $ne: true },
+        verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] },
+        $or: [
+          { verificationEmployeeId: { $exists: false } },
+          { verificationEmployeeId: null },
+        ],
+      }).select('_id');
+
+      for (const sale of unassigned) {
+        await CompanySalesService.assignVerificationEmployeeIfMissing(companyId, sale._id.toString(), employeeId, employeeName);
+      }
+
       const verifications = await Sale.find({
         companyId,
         failed: { $ne: true },
-        $or: [
-          { verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] } },
-          { verifiedBy: new Types.ObjectId(feedbackByIdOrVerifiedById(employeeId)) },
+        $and: [
+          {
+            $or: [
+              { verificationEmployeeId: new Types.ObjectId(employeeId) },
+              { verificationEmployeeId: null },
+              { verificationEmployeeId: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] } },
+              { verifiedBy: new Types.ObjectId(feedbackByIdOrVerifiedById(employeeId)) },
+            ],
+          },
         ],
       }).sort({ createdAt: -1 });
 
@@ -473,9 +708,20 @@ export class CompanySalesService {
         companyId,
         failed: { $ne: true },
         verificationStatus: 'SUCCESSFUL',
-        $or: [
-          { feedbackBusinessDate: { $lte: currentBDate } },
-          { feedbackStatus: 'COMPLETED' },
+        $and: [
+          {
+            $or: [
+              { verificationEmployeeId: new Types.ObjectId(employeeId) },
+              { verificationEmployeeId: null },
+              { verificationEmployeeId: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { feedbackBusinessDate: { $lte: currentBDate } },
+              { feedbackStatus: 'COMPLETED' },
+            ],
+          },
         ],
       }).sort({ createdAt: -1 });
 

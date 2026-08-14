@@ -6,7 +6,7 @@ const jwt_1 = require("../utils/jwt");
 const companyAuthService_1 = require("../services/companyAuthService");
 const index_1 = require("../constants/index");
 let io = null;
-const employeeRoles = [index_1.Roles.COMPANY_ADMIN, index_1.Roles.HR, index_1.Roles.MANAGER, index_1.Roles.TEAM_LEAD, index_1.Roles.EMPLOYEE, index_1.Roles.SALES, index_1.Roles.TECH_SUPPORT, index_1.Roles.IT, index_1.Roles.INTERN];
+const employeeRoles = [index_1.Roles.COMPANY_ADMIN, index_1.Roles.HR, index_1.Roles.MANAGER, index_1.Roles.TEAM_LEAD, index_1.Roles.EMPLOYEE, index_1.Roles.SALES, index_1.Roles.TECH_SUPPORT, index_1.Roles.VERIFICATION, index_1.Roles.FEEDBACK, index_1.Roles.IT, index_1.Roles.INTERN];
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
     .split(',')
     .map((url) => url.trim())

@@ -146,12 +146,55 @@ export class CompanySalesController {
     }
   }
 
-  static async startVerification(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  static async createVerification(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      if (!validate(req, res)) return;
+      const emp = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');
+      const empName = emp?.name || 'Admin';
+      ApiResponse.success(
+        res,
+        'Verification created successfully',
+        await CompanySalesService.createVerification(req.user!.companyId!, req.body, req.user!.id),
+        201
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateVerification(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      if (!validate(req, res)) return;
+      ApiResponse.success(
+        res,
+        'Verification updated successfully',
+        await CompanySalesService.updateVerification(req.user!.companyId!, req.params.id, req.body)
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteVerification(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       ApiResponse.success(
         res,
+        'Verification deleted successfully',
+        await CompanySalesService.deleteVerification(req.user!.companyId!, req.params.id)
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async startVerification(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const emp = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');
+      const empName = emp?.name || 'Verification Employee';
+      ApiResponse.success(
+        res,
         'Verification started successfully',
-        await CompanySalesService.startVerification(req.user!.companyId!, req.params.id)
+        await CompanySalesService.startVerification(req.user!.companyId!, req.params.id, req.user!.id, empName)
       );
     } catch (error) {
       next(error);

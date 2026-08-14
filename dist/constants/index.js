@@ -11,6 +11,8 @@ var Roles;
     Roles["EMPLOYEE"] = "EMPLOYEE";
     Roles["SALES"] = "SALES";
     Roles["TECH_SUPPORT"] = "TECH_SUPPORT";
+    Roles["VERIFICATION"] = "VERIFICATION";
+    Roles["FEEDBACK"] = "FEEDBACK";
     Roles["IT"] = "IT";
     Roles["INTERN"] = "INTERN";
 })(Roles || (exports.Roles = Roles = {}));

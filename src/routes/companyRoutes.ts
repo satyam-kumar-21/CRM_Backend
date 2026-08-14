@@ -27,7 +27,7 @@ router.get('/validate', authenticate, enforceTenant, CompanyAuthController.valid
 router.use(authenticate, enforceTenant, enforceEmployeeLoginEnabled);
 router.post('/logout', CompanyAuthController.logout);
 
-router.get('/dashboard', authorizeRoles(Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.IT, Roles.INTERN), CompanyAuthController.getDashboard);
+router.get('/dashboard', authorizeRoles(Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.VERIFICATION, Roles.FEEDBACK, Roles.IT, Roles.INTERN), CompanyAuthController.getDashboard);
 const companyEmployeeRoles = [Roles.COMPANY_ADMIN, Roles.HR, Roles.MANAGER, Roles.TEAM_LEAD, Roles.EMPLOYEE, Roles.SALES, Roles.TECH_SUPPORT, Roles.VERIFICATION, Roles.FEEDBACK, Roles.IT, Roles.INTERN] as const;
 
 router.get('/attendance', authorizeRoles(...companyEmployeeRoles), routePermission('attendance'), AttendanceController.list);
@@ -65,6 +65,9 @@ router.patch('/sales/:id/failed', authorizeRoles(Roles.COMPANY_ADMIN), markSaleF
 router.delete('/sales/:id', authorizeRoles(Roles.COMPANY_ADMIN), CompanySalesController.deleteSale);
 
 router.get('/verification', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.getVerifications);
+router.post('/verification', authorizeRoles(Roles.COMPANY_ADMIN, Roles.MANAGER, Roles.VERIFICATION), routePermission('verification'), saleValidation, CompanySalesController.createVerification);
+router.patch('/verification/:id', authorizeRoles(Roles.COMPANY_ADMIN, Roles.MANAGER, Roles.VERIFICATION), routePermission('verification'), saleValidation, CompanySalesController.updateVerification);
+router.delete('/verification/:id', authorizeRoles(Roles.COMPANY_ADMIN, Roles.MANAGER, Roles.VERIFICATION), routePermission('verification'), CompanySalesController.deleteVerification);
 router.post('/verification/:id/start', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.startVerification);
 router.post('/verification/:id/complete', authorizeRoles(...companyEmployeeRoles), routePermission('verification'), CompanySalesController.completeVerification);
 
