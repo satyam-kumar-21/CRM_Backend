@@ -206,7 +206,7 @@ export class CompanyAuthService {
     const companyFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true });
     const companyRevenueResult = await Sale.aggregate([
       { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
     ]);
     const companyRevenue = companyRevenueResult[0]?.total || 0;
 
@@ -222,7 +222,7 @@ export class CompanyAuthService {
     const employeeFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
     const employeeRevenueResult = await Sale.aggregate([
       { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
     ]);
     const employeeRevenue = employeeRevenueResult[0]?.total || 0;
 
@@ -268,7 +268,7 @@ export class CompanyAuthService {
     const todaySalesCount = await Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } });
     const todaySalesAgg = await Sale.aggregate([
       { $match: { companyId: new Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
     ]);
     const todaySalesAmount = todaySalesAgg[0]?.total || 0;
     const todayFailedSales = await Sale.countDocuments({ companyId: actualCompanyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
@@ -289,7 +289,7 @@ export class CompanyAuthService {
       {
         $group: {
           _id: '$connectedBy',
-          totalAmount: { $sum: '$amount' },
+          totalAmount: { $sum: { $ifNull: ['$finalAmount', '$amount'] } },
           saleCount: { $sum: 1 },
         },
       },

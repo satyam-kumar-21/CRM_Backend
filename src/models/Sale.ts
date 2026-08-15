@@ -18,6 +18,7 @@ export interface ISale extends Document {
   paymentMerchant?: string;
   connectedBy: string;
   customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
+  transactionType?: 'SALE' | 'UPGRADE';
   salesEmployeeId?: Types.ObjectId;
   salesEmployeeName?: string;
   techSupportEmployeeId?: Types.ObjectId;
@@ -81,6 +82,7 @@ const SaleSchema = new Schema<ISale>(
     paymentMerchant: { type: String, default: '', trim: true },
     connectedBy: { type: String, required: true, trim: true },
     customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
+    transactionType: { type: String, enum: ['SALE', 'UPGRADE'], default: 'SALE' },
     salesEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },
     salesEmployeeName: { type: String, default: '', trim: true },
     techSupportEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },

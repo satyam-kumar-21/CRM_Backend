@@ -16,7 +16,9 @@ export interface IUpgrade extends Document {
   upgradedBy?: Types.ObjectId;
   upgradedByName?: string;
   originalSaleId?: Types.ObjectId;
+  saleId?: Types.ObjectId;
   leadId?: Types.ObjectId;
+  businessDate?: string;
   upgradeNumber: number;
   upgradeAmount: number;
   salesTaxType: 'PERCENTAGE' | 'DIRECT_AMOUNT';
@@ -51,6 +53,7 @@ const UpgradeSchema = new Schema<IUpgrade>(
     upgradedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
     upgradedByName: { type: String, default: '', trim: true },
     originalSaleId: { type: Schema.Types.ObjectId, ref: 'Sale', default: null },
+    saleId: { type: Schema.Types.ObjectId, ref: 'Sale', default: null },
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead', default: null },
     upgradeNumber: { type: Number, default: 1 },
     upgradeAmount: { type: Number, default: 0 },

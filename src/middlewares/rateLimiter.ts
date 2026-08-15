@@ -1,12 +1,17 @@
 import rateLimit from 'express-rate-limit';
 
 export const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 300,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP address. Please try again after 15 minutes.',
+  keyGenerator: (req) => {
+    const userKey = (req as any)?.user?.id || (req as any)?.user?.employeeId;
+    return userKey || `ip:${req.ip || 'unknown'}`;
   },
+  skipSuccessfulRequests: false,
   standardHeaders: true,
   legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests. Please slow down and try again shortly.',
+  },
 });

@@ -282,6 +282,20 @@ export class CompanySalesService {
     return { id };
   }
 
+  static calculateSalesTotals<T extends { amount?: number; finalAmount?: number; transactionType?: string; customerType?: string }>(records: T[] = []) {
+    let revenue = 0;
+    let transactionCount = 0;
+
+    for (const record of records) {
+      const amount = Number(record.finalAmount ?? record.amount ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      revenue += amount;
+      transactionCount += 1;
+    }
+
+    return { revenue, transactionCount };
+  }
+
   static async getSales(companyId: string, role: string, employeeId: string, failed = false) {
     const statusQuery: any = failed
       ? { failed: true }
@@ -359,6 +373,7 @@ export class CompanySalesService {
       companyId,
       customerId,
       customerType: data.customerType || 'NEW',
+      transactionType: 'SALE',
       salesEmployeeId: salesEmpId,
       salesEmployeeName: salesEmpName,
       amount: Number(data.amount ?? finalAmount),
@@ -558,6 +573,7 @@ export class CompanySalesService {
       paymentMerchant: saleForUpgrade?.paymentMerchant || '',
       connectedBy: currentUserName || 'Sales Employee',
       customerType: 'UPGRADE',
+      transactionType: 'UPGRADE',
       salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
       salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
       amount: upgradeAmount,
@@ -576,10 +592,12 @@ export class CompanySalesService {
       feedbackBusinessDate: nextBDate,
     });
 
+    await Upgrade.updateOne({ _id: upgrade._id }, { $set: { saleId: upgradeSale._id } });
+
     await CompanySalesService.assignVerificationEmployeeForSale(companyId, upgradeSale);
     emitCompanyEvent('sale:created', upgradeSale);
     emitCompanyEvent('verification:updated', upgradeSale);
-    emitCompanyEvent('upgrade:created', upgrade);
+    emitCompanyEvent('upgrade:created', { ...upgrade.toObject(), saleId: upgradeSale._id });
 
     return upgrade;
   }
