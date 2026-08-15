@@ -1,6 +1,7 @@
 import { Lead, ILead } from '../models/Lead';
 import { Sale, ISale } from '../models/Sale';
 import { Upgrade, IUpgrade } from '../models/Upgrade';
+import { RemoteSupport } from '../models/RemoteSupport';
 import { Employee } from '../models/Employee';
 import { getNextCustomerId } from '../models/Counter';
 import { Roles } from '../constants/index';
@@ -452,11 +453,17 @@ export class CompanySalesService {
       { customerEmail: regex },
       { customerId: regex },
       { alternateContactNo: regex },
-      { leadId: regex },
+      { country: regex },
+      { system: regex },
+      { plan: regex },
+      { connectedBy: regex },
+      { salesEmployeeName: regex },
     ];
 
     if (Types.ObjectId.isValid(trimmed)) {
-      conditions.push({ _id: new Types.ObjectId(trimmed) });
+      const objId = new Types.ObjectId(trimmed);
+      conditions.push({ _id: objId });
+      conditions.push({ leadId: objId });
     }
 
     return conditions;
@@ -465,33 +472,19 @@ export class CompanySalesService {
   static async searchCustomers(companyId: string, role: string, employeeId: string, q: string) {
     const search = (q || '').trim();
     if (!search) {
-      if (role === Roles.SALES) {
+      if (role === Roles.SALES && employeeId && Types.ObjectId.isValid(employeeId)) {
         return Sale.find({ companyId, salesEmployeeId: new Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50);
       }
       return Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
     }
 
-    const query: any = { companyId };
     const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
-
-    if (role === Roles.SALES) {
-      query.$or = [
-        { salesEmployeeId: new Types.ObjectId(employeeId) },
-        { connectedBy: employeeId },
-      ];
-    }
-
-    const matches = await Sale.find({
-      ...query,
-      $or: searchFilters,
-    }).sort({ createdAt: -1 }).limit(100);
-
-    if (matches.length > 0) return matches;
+    if (!searchFilters.length) return [];
 
     return Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100);
   }
 
-  static async createUpgrade(companyId: string, data: Partial<SaleInput> & { customerId?: string; upgradeAmount?: number; salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT'; salesTaxValue?: number; salesTaxAmount?: number; finalAmount?: number; paymentMethod?: ISale['paymentMethod']; salesEmployeeRemark?: string; upgradedBy?: string; customerName?: string; }, currentUserId?: string, currentUserName?: string) {
+  static async createUpgrade(companyId: string, data: Partial<SaleInput> & { customerId?: string; upgradeAmount?: number; salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT'; salesTaxValue?: number; salesTaxAmount?: number; finalAmount?: number; paymentMethod?: ISale['paymentMethod']; salesEmployeeRemark?: string; upgradedBy?: string; customerName?: string; customerEmail?: string; mobile?: string; country?: string; system?: string; needsTechSupport?: 'yes' | 'no' | boolean; }, currentUserId?: string, currentUserName?: string) {
     const customerId = data.customerId || (await getNextCustomerId(companyId));
     const upgradeAmount = Number(data.upgradeAmount ?? data.amount ?? 0);
     const salesTaxType = data.salesTaxType || 'PERCENTAGE';
@@ -501,13 +494,24 @@ export class CompanySalesService {
     const saleForUpgrade = await Sale.findOne({ companyId, customerId }).sort({ createdAt: -1 });
     const existingUpgrades = await Upgrade.countDocuments({ companyId, customerId });
 
+    const validCurrentUserId = currentUserId && Types.ObjectId.isValid(currentUserId) ? new Types.ObjectId(currentUserId) : undefined;
+    const currentBDate = getBusinessDateString();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextBDate = getBusinessDateString(tomorrow);
+    const hasTechSupport = data.needsTechSupport === 'yes' || data.needsTechSupport === true;
+
     const upgrade = await Upgrade.create({
       companyId,
       customerId,
       customerName: data.customerName || saleForUpgrade?.name || 'Customer',
-      salesEmployeeId: saleForUpgrade?.salesEmployeeId || new Types.ObjectId(currentUserId || ''),
+      customerEmail: data.customerEmail || saleForUpgrade?.customerEmail || '',
+      mobile: data.mobile || saleForUpgrade?.alternateContactNo || '',
+      country: data.country || saleForUpgrade?.country || '',
+      system: data.system || saleForUpgrade?.system || '',
+      salesEmployeeId: saleForUpgrade?.salesEmployeeId || validCurrentUserId,
       salesEmployeeName: saleForUpgrade?.salesEmployeeName || currentUserName || 'Sales Employee',
-      upgradedBy: currentUserId ? new Types.ObjectId(currentUserId) : undefined,
+      upgradedBy: validCurrentUserId,
       upgradedByName: currentUserName || 'Sales Employee',
       originalSaleId: saleForUpgrade?._id,
       upgradeNumber: existingUpgrades + 1,
@@ -519,12 +523,64 @@ export class CompanySalesService {
       paymentMethod: data.paymentMethod || saleForUpgrade?.paymentMethod || 'Card',
       salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
       status: 'PENDING',
-      techSupportStatus: 'NONE',
+      techSupportStatus: hasTechSupport ? 'PENDING' : 'NONE',
       verificationStatus: 'PENDING',
       feedbackStatus: 'PENDING',
     });
 
+    if (hasTechSupport) {
+      const rsTicket = await RemoteSupport.create({
+        companyId,
+        customerName: data.customerName || saleForUpgrade?.name || 'Customer',
+        customerContact: data.mobile || saleForUpgrade?.alternateContactNo || '',
+        country: data.country || saleForUpgrade?.country || '',
+        system: data.system || saleForUpgrade?.system || '',
+        otherDetails: `[Upgrade #${existingUpgrades + 1}] ${(data.salesEmployeeRemark || '').trim()}`,
+        salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
+        salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
+        dateTime: new Date(),
+        issueReason: (data.salesEmployeeRemark || '').trim() || 'Customer Upgrade Remote Support',
+        status: 'PENDING',
+      });
+      emitCompanyEvent('remote-support:created', rsTicket);
+    }
+
+    const upgradeSale = await Sale.create({
+      companyId,
+      customerId,
+      name: data.customerName || saleForUpgrade?.name || 'Customer',
+      customerEmail: data.customerEmail || saleForUpgrade?.customerEmail || '',
+      alternateContactNo: data.mobile || saleForUpgrade?.alternateContactNo || '',
+      country: data.country || saleForUpgrade?.country || 'Unknown',
+      system: data.system || saleForUpgrade?.system || 'N/A',
+      plan: saleForUpgrade?.plan || '',
+      issues: (data.salesEmployeeRemark || '').trim(),
+      paymentMerchant: saleForUpgrade?.paymentMerchant || '',
+      connectedBy: currentUserName || 'Sales Employee',
+      customerType: 'UPGRADE',
+      salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
+      salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
+      amount: upgradeAmount,
+      mainAmount: saleForUpgrade?.amount || 0,
+      upgradedAmount: upgradeAmount,
+      salesTaxType,
+      salesTaxValue,
+      salesTaxAmount,
+      finalAmount,
+      paymentMethod: data.paymentMethod || saleForUpgrade?.paymentMethod || 'Card',
+      saleDate: currentBDate,
+      businessDate: currentBDate,
+      salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
+      verificationStatus: 'PENDING',
+      feedbackStatus: 'PENDING',
+      feedbackBusinessDate: nextBDate,
+    });
+
+    await CompanySalesService.assignVerificationEmployeeForSale(companyId, upgradeSale);
+    emitCompanyEvent('sale:created', upgradeSale);
+    emitCompanyEvent('verification:updated', upgradeSale);
     emitCompanyEvent('upgrade:created', upgrade);
+
     return upgrade;
   }
 
@@ -532,21 +588,39 @@ export class CompanySalesService {
     const query: any = { companyId };
     if (filters.customerId) query.customerId = filters.customerId;
     if (filters.status) query.status = filters.status;
+
+    const andConditions: any[] = [];
+
     if (filters.q) {
       const q = new RegExp(filters.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      query.$or = [
-        { customerName: q },
-        { customerId: q },
-        { salesEmployeeName: q },
-        { upgradedByName: q },
-      ];
+      andConditions.push({
+        $or: [
+          { customerName: q },
+          { customerId: q },
+          { customerEmail: q },
+          { mobile: q },
+          { salesEmployeeName: q },
+          { upgradedByName: q },
+        ],
+      });
     }
-    if (role === Roles.SALES) {
-      query.$or = [
-        { salesEmployeeId: new Types.ObjectId(employeeId) },
-        { upgradedBy: new Types.ObjectId(employeeId) },
-      ];
+
+    if (role === Roles.SALES && employeeId && Types.ObjectId.isValid(employeeId)) {
+      const empObjectId = new Types.ObjectId(employeeId);
+      andConditions.push({
+        $or: [
+          { salesEmployeeId: empObjectId },
+          { upgradedBy: empObjectId },
+        ],
+      });
     }
+
+    if (andConditions.length === 1) {
+      Object.assign(query, andConditions[0]);
+    } else if (andConditions.length > 1) {
+      query.$and = andConditions;
+    }
+
     return Upgrade.find(query).sort({ createdAt: -1 });
   }
 

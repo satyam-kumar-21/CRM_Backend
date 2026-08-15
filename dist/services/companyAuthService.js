@@ -433,7 +433,7 @@ class CompanyAuthService {
         return { id: employee._id, employeeId: employee.employeeId, name: employee.name, email: employee.email, role: employee.role, permissions: employee.permissions };
     }
     static async getEmployees(companyId, currentEmployeeId) {
-        const employees = await Employee_1.Employee.find({ companyId, _id: { $ne: currentEmployeeId } }).sort({ createdAt: -1 });
+        const employees = await Employee_1.Employee.find({ companyId, _id: { $ne: currentEmployeeId } }).select('-passwordHash -refreshTokens').sort({ createdAt: -1 });
         return Promise.all(employees.map(async (employee) => {
             const [latestMessage, unreadCount] = await Promise.all([
                 Message_1.Message.findOne({ companyId, $or: [{ senderId: employee._id }, { recipientId: employee._id }] }).sort({ createdAt: -1 }).select('createdAt'),

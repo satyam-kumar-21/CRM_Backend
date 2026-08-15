@@ -48,7 +48,7 @@ router.patch('/settings/holidays/:hid', authorizeRoles(Roles.COMPANY_ADMIN), Com
 router.delete('/settings/holidays/:hid', authorizeRoles(Roles.COMPANY_ADMIN), CompanySettingsController.deleteHoliday);
 router.get('/notifications', authorizeRoles(...companyEmployeeRoles), routePermission('notifications'), NotificationController.list);
 router.patch('/notifications/:id/read', authorizeRoles(...companyEmployeeRoles), routePermission('notifications'), NotificationController.markRead);
-router.get('/employees', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.getEmployees);
+router.get('/employees', authorizeRoles(...companyEmployeeRoles), CompanyAuthController.getEmployees);
 router.post('/employees', authorizeRoles(Roles.COMPANY_ADMIN), createEmployeeValidation, CompanyAuthController.createEmployee);
 router.patch('/employees/:id', authorizeRoles(Roles.COMPANY_ADMIN), updateEmployeeValidation, CompanyAuthController.updateEmployee);
 router.patch('/employees/:id/status', authorizeRoles(Roles.COMPANY_ADMIN), CompanyAuthController.updateEmployeeStatus);

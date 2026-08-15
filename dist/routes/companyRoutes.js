@@ -44,7 +44,7 @@ router.patch('/settings/holidays/:hid', (0, rbacMiddleware_1.authorizeRoles)(ind
 router.delete('/settings/holidays/:hid', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companySettingsController_1.CompanySettingsController.deleteHoliday);
 router.get('/notifications', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('notifications'), notificationController_1.NotificationController.list);
 router.patch('/notifications/:id/read', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), (0, routePermissionMiddleware_1.routePermission)('notifications'), notificationController_1.NotificationController.markRead);
-router.get('/employees', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyAuthController_1.CompanyAuthController.getEmployees);
+router.get('/employees', (0, rbacMiddleware_1.authorizeRoles)(...companyEmployeeRoles), companyAuthController_1.CompanyAuthController.getEmployees);
 router.post('/employees', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.createEmployeeValidation, companyAuthController_1.CompanyAuthController.createEmployee);
 router.patch('/employees/:id', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyValidator_1.updateEmployeeValidation, companyAuthController_1.CompanyAuthController.updateEmployee);
 router.patch('/employees/:id/status', (0, rbacMiddleware_1.authorizeRoles)(index_1.Roles.COMPANY_ADMIN), companyAuthController_1.CompanyAuthController.updateEmployeeStatus);

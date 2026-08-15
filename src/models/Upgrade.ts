@@ -7,8 +7,12 @@ export interface IUpgrade extends Document {
   companyId: Types.ObjectId;
   customerId: string;
   customerName: string;
-  salesEmployeeId: Types.ObjectId;
-  salesEmployeeName: string;
+  customerEmail?: string;
+  mobile?: string;
+  country?: string;
+  system?: string;
+  salesEmployeeId?: Types.ObjectId;
+  salesEmployeeName?: string;
   upgradedBy?: Types.ObjectId;
   upgradedByName?: string;
   originalSaleId?: Types.ObjectId;
@@ -38,8 +42,12 @@ const UpgradeSchema = new Schema<IUpgrade>(
     companyId: { type: Schema.Types.ObjectId, required: true, ref: 'Company' },
     customerId: { type: String, required: true, trim: true },
     customerName: { type: String, required: true, trim: true },
-    salesEmployeeId: { type: Schema.Types.ObjectId, required: true, ref: 'Employee' },
-    salesEmployeeName: { type: String, required: true, trim: true },
+    customerEmail: { type: String, default: '', trim: true, lowercase: true },
+    mobile: { type: String, default: '', trim: true },
+    country: { type: String, default: '', trim: true },
+    system: { type: String, default: '', trim: true },
+    salesEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
+    salesEmployeeName: { type: String, default: '', trim: true },
     upgradedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
     upgradedByName: { type: String, default: '', trim: true },
     originalSaleId: { type: Schema.Types.ObjectId, ref: 'Sale', default: null },
