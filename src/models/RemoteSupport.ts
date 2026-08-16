@@ -7,6 +7,9 @@ export interface IRemoteSupport extends Document {
   companyId: Types.ObjectId;
   leadId?: Types.ObjectId;
   workflowMessageId?: string;
+  customerId?: string;
+  saleId?: Types.ObjectId;
+  upgradeId?: Types.ObjectId;
   customerName: string;
   customerContact: string;
   country?: string;
@@ -35,6 +38,9 @@ const RemoteSupportSchema = new Schema<IRemoteSupport>(
   {
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead', required: false },
     workflowMessageId: { type: String, trim: true, default: '' },
+    customerId: { type: String, trim: true, default: '' },
+    saleId: { type: Schema.Types.ObjectId, ref: 'Sale', required: false },
+    upgradeId: { type: Schema.Types.ObjectId, ref: 'Upgrade', required: false },
     customerName: { type: String, required: true, trim: true },
     customerContact: { type: String, required: true, trim: true },
     country: { type: String, trim: true, default: '' },

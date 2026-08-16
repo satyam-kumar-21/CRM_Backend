@@ -196,6 +196,18 @@ class CompanySalesService {
         (0, socket_1.emitCompanyEvent)('lead:deleted', { id });
         return { id };
     }
+    static calculateSalesTotals(records = []) {
+        let revenue = 0;
+        let transactionCount = 0;
+        for (const record of records) {
+            const amount = Number(record.finalAmount ?? record.amount ?? 0);
+            if (!Number.isFinite(amount) || amount <= 0)
+                continue;
+            revenue += amount;
+            transactionCount += 1;
+        }
+        return { revenue, transactionCount };
+    }
     static async getSales(companyId, role, employeeId, failed = false) {
         const statusQuery = failed
             ? { failed: true }
@@ -264,6 +276,7 @@ class CompanySalesService {
             companyId,
             customerId,
             customerType: data.customerType || 'NEW',
+            transactionType: 'SALE',
             salesEmployeeId: salesEmpId,
             salesEmployeeName: salesEmpName,
             amount: Number(data.amount ?? finalAmount),
@@ -443,6 +456,7 @@ class CompanySalesService {
             paymentMerchant: saleForUpgrade?.paymentMerchant || '',
             connectedBy: currentUserName || 'Sales Employee',
             customerType: 'UPGRADE',
+            transactionType: 'UPGRADE',
             salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
             salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
             amount: upgradeAmount,
@@ -456,14 +470,17 @@ class CompanySalesService {
             saleDate: currentBDate,
             businessDate: currentBDate,
             salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
-            verificationStatus: 'PENDING',
+            verificationStatus: hasTechSupport ? 'PENDING' : 'PENDING',
             feedbackStatus: 'PENDING',
             feedbackBusinessDate: nextBDate,
         });
-        await CompanySalesService.assignVerificationEmployeeForSale(companyId, upgradeSale);
+        await Upgrade_1.Upgrade.updateOne({ _id: upgrade._id }, { $set: { saleId: upgradeSale._id } });
+        if (!hasTechSupport) {
+            await CompanySalesService.assignVerificationEmployeeForSale(companyId, upgradeSale);
+        }
         (0, socket_1.emitCompanyEvent)('sale:created', upgradeSale);
         (0, socket_1.emitCompanyEvent)('verification:updated', upgradeSale);
-        (0, socket_1.emitCompanyEvent)('upgrade:created', upgrade);
+        (0, socket_1.emitCompanyEvent)('upgrade:created', { ...upgrade.toObject(), saleId: upgradeSale._id });
         return upgrade;
     }
     static async getUpgrades(companyId, role, employeeId, filters = {}) {
@@ -624,6 +641,23 @@ class CompanySalesService {
             sale.verifiedByName = verifiedByName;
             sale.verifiedAt = new Date();
             sale.verificationNotes = data.notes || '';
+            sale.verificationPendingReason = '';
+            sale.feedbackStatus = 'PENDING';
+            sale.feedbackRating = undefined;
+            sale.feedbackNotes = '';
+            sale.feedbackBy = null;
+            sale.feedbackByName = '';
+            sale.feedbackAt = null;
+            const nextBusinessDate = new Date();
+            nextBusinessDate.setDate(nextBusinessDate.getDate() + 1);
+            sale.feedbackBusinessDate = (0, businessDate_1.getBusinessDateString)(nextBusinessDate);
+        }
+        else if (data.status === 'PENDING') {
+            if (!data.pendingReason || !data.pendingReason.trim()) {
+                throw { statusCode: 400, message: 'Pending reason is required when marking verification as pending.' };
+            }
+            sale.verificationStatus = 'PENDING';
+            sale.verificationPendingReason = data.pendingReason.trim();
         }
         else {
             if (!data.failedReason || !data.failedReason.trim()) {
@@ -634,6 +668,9 @@ class CompanySalesService {
             sale.verificationFailedByName = verifiedByName;
             sale.verificationFailedReason = data.failedReason.trim();
             sale.verificationFailedAt = new Date();
+            sale.verificationPendingReason = '';
+            sale.feedbackStatus = 'PENDING';
+            sale.feedbackBusinessDate = '';
         }
         await sale.save();
         (0, socket_1.emitCompanyEvent)('verification:updated', sale);
@@ -646,11 +683,20 @@ class CompanySalesService {
             companyId,
             failed: { $ne: true },
             verificationStatus: 'SUCCESSFUL',
-            $or: [
-                { feedbackBusinessDate: { $lte: currentBDate } },
-                { feedbackStatus: 'COMPLETED' }
-            ]
         };
+        if (filters.status === 'PENDING') {
+            query.feedbackStatus = 'PENDING';
+            query.feedbackBusinessDate = { $ne: '', $lte: currentBDate };
+        }
+        else if (filters.status === 'COMPLETED') {
+            query.feedbackStatus = 'COMPLETED';
+        }
+        else {
+            query.$or = [
+                { feedbackStatus: 'PENDING', feedbackBusinessDate: { $ne: '', $lte: currentBDate } },
+                { feedbackStatus: 'COMPLETED' },
+            ];
+        }
         if (role === index_1.Roles.VERIFICATION || role === index_1.Roles.FEEDBACK) {
             query.$and = [
                 {
@@ -662,11 +708,25 @@ class CompanySalesService {
                 },
             ];
         }
-        if (filters.status)
-            query.feedbackStatus = filters.status;
         return Sale_1.Sale.find(query).sort({ createdAt: -1 });
     }
     static async completeFeedback(companyId, id, feedbackById, feedbackByName, data) {
+        if (data.status === 'PENDING') {
+            if (!data.pendingReason || !data.pendingReason.trim()) {
+                throw { statusCode: 400, message: 'Pending reason is required when marking feedback as pending.' };
+            }
+            const sale = await Sale_1.Sale.findOne({ companyId, _id: id });
+            if (!sale)
+                throw { statusCode: 404, message: 'Sale record not found.' };
+            sale.feedbackStatus = 'PENDING';
+            sale.feedbackPendingReason = data.pendingReason.trim();
+            const nextBusinessDate = new Date();
+            nextBusinessDate.setDate(nextBusinessDate.getDate() + 1);
+            sale.feedbackBusinessDate = (0, businessDate_1.getBusinessDateString)(nextBusinessDate);
+            await sale.save();
+            (0, socket_1.emitCompanyEvent)('feedback:updated', sale);
+            return sale;
+        }
         if (!data.rating)
             throw { statusCode: 400, message: 'Feedback rating is required.' };
         const sale = await Sale_1.Sale.findOne({ companyId, _id: id });
@@ -678,6 +738,7 @@ class CompanySalesService {
         sale.feedbackBy = new mongoose_1.Types.ObjectId(feedbackById);
         sale.feedbackByName = feedbackByName;
         sale.feedbackAt = new Date();
+        sale.feedbackPendingReason = '';
         await sale.save();
         (0, socket_1.emitCompanyEvent)('feedback:updated', sale);
         return sale;

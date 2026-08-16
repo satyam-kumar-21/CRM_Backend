@@ -185,14 +185,16 @@ class CompanyAuthService {
             isRead: false,
         });
         const nonFailedSaleFilter = { failed: { $ne: true } };
+        const currentMonth = (0, businessDate_1.getBusinessMonthString)();
+        const { start: monthStart, end: monthEnd } = (0, businessDate_1.getBusinessMonthRange)(currentMonth);
         const companyTotalLeads = await Lead_1.Lead.countDocuments({ companyId: actualCompanyId });
         const companyConnectedLeads = await Lead_1.Lead.countDocuments({ companyId: actualCompanyId, connected: 'yes' });
         const companyPendingLeads = await Lead_1.Lead.countDocuments({ companyId: actualCompanyId, connected: 'no' });
-        const companyTotalSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter });
-        const companyFailedSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, failed: true });
+        const companyTotalSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter, createdAt: { $gte: monthStart, $lt: monthEnd } });
+        const companyFailedSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, failed: true, createdAt: { $gte: monthStart, $lt: monthEnd } });
         const companyRevenueResult = await Sale_1.Sale.aggregate([
-            { $match: { companyId: new mongoose_1.Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter } },
-            { $group: { _id: null, total: { $sum: '$amount' } } },
+            { $match: { companyId: new mongoose_1.Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, createdAt: { $gte: monthStart, $lt: monthEnd } } },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
         ]);
         const companyRevenue = companyRevenueResult[0]?.total || 0;
         const employeeLeadFilter = {
@@ -207,9 +209,26 @@ class CompanyAuthService {
         const employeeFailedSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, failed: true, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] });
         const employeeRevenueResult = await Sale_1.Sale.aggregate([
             { $match: { companyId: new mongoose_1.Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, $or: [{ connectedBy: employee.name }, { connectedBy: employee.employeeId }] } },
-            { $group: { _id: null, total: { $sum: '$amount' } } },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
         ]);
         const employeeRevenue = employeeRevenueResult[0]?.total || 0;
+        const monthlySalesResult = await Sale_1.Sale.aggregate([
+            {
+                $match: {
+                    companyId: new mongoose_1.Types.ObjectId(actualCompanyId),
+                    ...nonFailedSaleFilter,
+                    createdAt: { $gte: monthStart, $lt: monthEnd },
+                    $or: [
+                        { salesEmployeeId: employee._id },
+                        { salesEmployeeName: employee.name },
+                        { connectedBy: employee.name },
+                        { connectedBy: employee.employeeId },
+                    ],
+                },
+            },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
+        ]);
+        const monthlySalesAchieved = monthlySalesResult[0]?.total || 0;
         const groups = await Group_1.Group.find(isAdmin ? { companyId: actualCompanyId } : {
             companyId: actualCompanyId,
             $or: [
@@ -250,27 +269,25 @@ class CompanyAuthService {
         const todaySalesCount = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } });
         const todaySalesAgg = await Sale_1.Sale.aggregate([
             { $match: { companyId: new mongoose_1.Types.ObjectId(actualCompanyId), ...nonFailedSaleFilter, createdAt: { $gte: todayStart, $lt: todayEnd } } },
-            { $group: { _id: null, total: { $sum: '$amount' } } },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
         ]);
         const todaySalesAmount = todaySalesAgg[0]?.total || 0;
         const todayFailedSales = await Sale_1.Sale.countDocuments({ companyId: actualCompanyId, failed: true, createdAt: { $gte: todayStart, $lt: todayEnd } });
         const todayRemoteSuccessful = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId: actualCompanyId, status: 'SUCCESSFUL', dateTime: { $gte: todayStart, $lt: todayEnd } });
         const todayRemoteFailed = await RemoteSupport_1.RemoteSupport.countDocuments({ companyId: actualCompanyId, status: 'FAILED', dateTime: { $gte: todayStart, $lt: todayEnd } });
         const todayRemoteTotal = todayRemoteSuccessful + todayRemoteFailed;
-        const currentMonth = (0, businessDate_1.getBusinessMonthString)();
-        const { start: monthStart, end: monthEnd } = (0, businessDate_1.getBusinessMonthRange)(currentMonth);
         const topSalesEmployees = await Sale_1.Sale.aggregate([
             {
                 $match: {
-                    companyId: new mongoose_1.Types.ObjectId(companyId),
+                    companyId: new mongoose_1.Types.ObjectId(actualCompanyId),
                     ...nonFailedSaleFilter,
-                    saleDate: { $regex: `^${currentMonth}` },
+                    createdAt: { $gte: monthStart, $lt: monthEnd },
                 },
             },
             {
                 $group: {
-                    _id: '$connectedBy',
-                    totalAmount: { $sum: '$amount' },
+                    _id: { $ifNull: ['$salesEmployeeName', '$connectedBy'] },
+                    totalAmount: { $sum: { $ifNull: ['$finalAmount', '$amount'] } },
                     saleCount: { $sum: 1 },
                 },
             },
@@ -321,7 +338,7 @@ class CompanyAuthService {
                 theme: employee.theme || 'blue',
                 monthlySalesTarget: employee.monthlySalesTarget || 0,
                 remoteTarget: employee.remoteTarget || 0,
-                monthlySalesAchieved: employee.monthlySalesAchieved || 0,
+                monthlySalesAchieved: monthlySalesAchieved || 0,
                 leadsAssigned: employee.leadsAssigned || 0,
                 leadsConverted: employee.leadsConverted || 0,
                 phone: employee.phone,
@@ -343,6 +360,7 @@ class CompanyAuthService {
                 myFailedSales: employeeFailedSales,
                 myConnectedLeads: employeeConnectedLeads,
                 myPendingLeads: employeePendingLeads,
+                monthlySalesAchieved,
                 remoteSupportTickets: remoteSupportSummary.total,
                 activeProjects: projectSummary.active,
                 completedProjects: projectSummary.completed,
@@ -434,12 +452,35 @@ class CompanyAuthService {
     }
     static async getEmployees(companyId, currentEmployeeId) {
         const employees = await Employee_1.Employee.find({ companyId, _id: { $ne: currentEmployeeId } }).select('-passwordHash -refreshTokens').sort({ createdAt: -1 });
+        const currentMonth = (0, businessDate_1.getBusinessMonthString)();
+        const { start: monthStart, end: monthEnd } = (0, businessDate_1.getBusinessMonthRange)(currentMonth);
         return Promise.all(employees.map(async (employee) => {
-            const [latestMessage, unreadCount] = await Promise.all([
+            const [latestMessage, unreadCount, monthlySalesTotal] = await Promise.all([
                 Message_1.Message.findOne({ companyId, $or: [{ senderId: employee._id }, { recipientId: employee._id }] }).sort({ createdAt: -1 }).select('createdAt'),
                 Message_1.Message.countDocuments({ companyId, senderId: employee._id, recipientId: currentEmployeeId, readBy: { $ne: currentEmployeeId } }),
+                Sale_1.Sale.aggregate([
+                    {
+                        $match: {
+                            companyId: new mongoose_1.Types.ObjectId(companyId),
+                            failed: { $ne: true },
+                            createdAt: { $gte: monthStart, $lt: monthEnd },
+                            $or: [
+                                { salesEmployeeId: employee._id },
+                                { salesEmployeeName: employee.name },
+                                { connectedBy: employee.name },
+                                { connectedBy: employee.employeeId },
+                            ],
+                        },
+                    },
+                    { $group: { _id: null, total: { $sum: { $ifNull: ['$finalAmount', '$amount'] } } } },
+                ]),
             ]);
-            return { ...employee.toObject(), latestChatAt: latestMessage?.createdAt || null, unreadCount };
+            return {
+                ...employee.toObject(),
+                monthlySalesAchieved: monthlySalesTotal[0]?.total || 0,
+                latestChatAt: latestMessage?.createdAt || null,
+                unreadCount,
+            };
         }));
     }
     static async updateEmployeePermissions(companyId, employeeId, permissions) {

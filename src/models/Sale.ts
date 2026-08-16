@@ -53,6 +53,7 @@ export interface ISale extends Document {
   verificationFailedBy?: Types.ObjectId | null;
   verificationFailedByName?: string;
   verificationFailedAt?: Date | null;
+  verificationPendingReason?: string;
 
   // Feedback fields
   feedbackStatus: 'PENDING' | 'COMPLETED';
@@ -62,6 +63,7 @@ export interface ISale extends Document {
   feedbackByName?: string;
   feedbackAt?: Date | null;
   feedbackBusinessDate?: string;
+  feedbackPendingReason?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -117,6 +119,7 @@ const SaleSchema = new Schema<ISale>(
     verificationFailedBy: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
     verificationFailedByName: { type: String, default: '' },
     verificationFailedAt: { type: Date, default: null },
+    verificationPendingReason: { type: String, default: '' },
 
     // Feedback schema
     feedbackStatus: { type: String, enum: ['PENDING', 'COMPLETED'], default: 'PENDING' },
@@ -126,6 +129,7 @@ const SaleSchema = new Schema<ISale>(
     feedbackByName: { type: String, default: '' },
     feedbackAt: { type: Date, default: null },
     feedbackBusinessDate: { type: String, default: '' },
+    feedbackPendingReason: { type: String, default: '' },
   },
   { timestamps: true }
 );

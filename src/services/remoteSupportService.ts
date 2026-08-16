@@ -45,6 +45,9 @@ export class RemoteSupportService {
   static async create(companyId: string, data: {
     leadId?: string;
     workflowMessageId?: string;
+    customerId?: string;
+    saleId?: string;
+    upgradeId?: string;
     customerName: string;
     customerContact: string;
     country?: string;
@@ -67,6 +70,9 @@ export class RemoteSupportService {
       companyId,
       leadId: data.leadId ? new Types.ObjectId(data.leadId) : undefined,
       workflowMessageId: data.workflowMessageId || '',
+      customerId: data.customerId || '',
+      saleId: data.saleId ? new Types.ObjectId(data.saleId) : undefined,
+      upgradeId: data.upgradeId ? new Types.ObjectId(data.upgradeId) : undefined,
       customerName: data.customerName,
       customerContact: data.customerContact,
       country: data.country || '',
@@ -196,6 +202,33 @@ export class RemoteSupportService {
           }
         );
       }
+
+      const sale = record.saleId ? await (await import('../models/Sale.js')).Sale.findOne({ companyId, _id: record.saleId }) : null;
+      if (sale) {
+        sale.verificationStatus = 'PENDING';
+        sale.feedbackStatus = 'PENDING';
+        if (!sale.verificationEmployeeId) {
+          const verificationEmployee = await Employee.findOne({ companyId, role: 'VERIFICATION', isSuspended: false }).sort({ createdAt: 1 }).select('_id name');
+          if (verificationEmployee) {
+            sale.verificationEmployeeId = verificationEmployee._id;
+            sale.verificationEmployeeName = verificationEmployee.name;
+          }
+        }
+        await sale.save();
+      }
+
+      if (record.upgradeId) {
+        const { Upgrade } = await import('../models/Upgrade.js');
+        await Upgrade.findOneAndUpdate(
+          { companyId, _id: record.upgradeId },
+          {
+            techSupportStatus: 'SUCCESSFUL',
+            verificationStatus: 'PENDING',
+            status: 'PENDING',
+          }
+        );
+      }
+
       emitCompanyEvent('support:completed', record);
     } else if (data.status === 'FAILED') {
       if (!data.failedReason || !data.failedReason.trim()) {
@@ -224,6 +257,19 @@ export class RemoteSupportService {
           { new: true }
         );
       }
+
+      if (record.upgradeId) {
+        const { Upgrade } = await import('../models/Upgrade.js');
+        await Upgrade.findOneAndUpdate(
+          { companyId, _id: record.upgradeId },
+          {
+            techSupportStatus: 'FAILED',
+            verificationStatus: 'FAILED',
+            status: 'FAILED',
+          }
+        );
+      }
+
       emitCompanyEvent('support:failed', record);
     }
 

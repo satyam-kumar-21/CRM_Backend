@@ -16,6 +16,7 @@ const UpgradeSchema = new mongoose_1.Schema({
     upgradedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', default: null },
     upgradedByName: { type: String, default: '', trim: true },
     originalSaleId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Sale', default: null },
+    saleId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Sale', default: null },
     leadId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Lead', default: null },
     upgradeNumber: { type: Number, default: 1 },
     upgradeAmount: { type: Number, default: 0 },

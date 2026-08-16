@@ -6,6 +6,9 @@ const tenantPlugin_1 = require("../plugins/tenantPlugin");
 const RemoteSupportSchema = new mongoose_1.Schema({
     leadId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Lead', required: false },
     workflowMessageId: { type: String, trim: true, default: '' },
+    customerId: { type: String, trim: true, default: '' },
+    saleId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Sale', required: false },
+    upgradeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Upgrade', required: false },
     customerName: { type: String, required: true, trim: true },
     customerContact: { type: String, required: true, trim: true },
     country: { type: String, trim: true, default: '' },

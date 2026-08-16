@@ -17,6 +17,7 @@ const SaleSchema = new mongoose_1.Schema({
     paymentMerchant: { type: String, default: '', trim: true },
     connectedBy: { type: String, required: true, trim: true },
     customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
+    transactionType: { type: String, enum: ['SALE', 'UPGRADE'], default: 'SALE' },
     salesEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' },
     salesEmployeeName: { type: String, default: '', trim: true },
     techSupportEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' },
@@ -50,6 +51,7 @@ const SaleSchema = new mongoose_1.Schema({
     verificationFailedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee', default: null },
     verificationFailedByName: { type: String, default: '' },
     verificationFailedAt: { type: Date, default: null },
+    verificationPendingReason: { type: String, default: '' },
     // Feedback schema
     feedbackStatus: { type: String, enum: ['PENDING', 'COMPLETED'], default: 'PENDING' },
     feedbackRating: { type: String, enum: ['Positive', 'Neutral', 'Negative'] },
@@ -58,6 +60,7 @@ const SaleSchema = new mongoose_1.Schema({
     feedbackByName: { type: String, default: '' },
     feedbackAt: { type: Date, default: null },
     feedbackBusinessDate: { type: String, default: '' },
+    feedbackPendingReason: { type: String, default: '' },
 }, { timestamps: true });
 SaleSchema.plugin(tenantPlugin_1.tenantPlugin);
 SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, sparse: true });
