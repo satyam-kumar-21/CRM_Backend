@@ -18,6 +18,11 @@ export const companyLoginValidation = [
   body('email').optional().isEmail().withMessage('Please provide a valid email address'),
 ];
 
+export const verifyLoginOtpValidation = [
+  body('otpToken').notEmpty().withMessage('OTP session token is required'),
+  body('otp').trim().notEmpty().withMessage('OTP is required').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
+];
+
 export const createEmployeeValidation = [
   body('name').trim().notEmpty().withMessage('Employee name is required'),
   body('email').optional().isEmail().withMessage('Valid employee email is required'),

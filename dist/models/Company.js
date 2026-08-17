@@ -20,6 +20,7 @@ const CompanySchema = new mongoose_1.Schema({
     settings: {
         companyName: { type: String, default: '' },
         employeeLoginEnabled: { type: Boolean, default: true },
+        employeeOtpEnabled: { type: Boolean, default: false },
         routePermissions: { type: Map, of: Boolean, default: {} },
         holidays: [{ name: { type: String }, date: { type: Date } }],
     },

@@ -5,7 +5,7 @@ import { authenticate } from '../middlewares/authMiddleware';
 import { authorizeRoles } from '../middlewares/rbacMiddleware';
 import { enforceTenant } from '../middlewares/tenantMiddleware';
 import { enforceEmployeeLoginEnabled } from '../middlewares/companySettingsMiddleware';
-import { companyLoginValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, updateLeadValidation, saleValidation, markSaleFailedValidation, createLeaveValidation } from '../validators/companyValidator';
+import { companyLoginValidation, verifyLoginOtpValidation, createEmployeeValidation, updateEmployeeValidation, createGroupValidation, updateGroupValidation, postMessageValidation, leadValidation, updateLeadValidation, saleValidation, markSaleFailedValidation, createLeaveValidation } from '../validators/companyValidator';
 import { createRemoteSupportValidation, updateRemoteSupportValidation } from '../validators/remoteSupportValidator';
 import { createProjectValidation, updateProjectValidation } from '../validators/projectValidator';
 import { CompanySalesController } from '../controllers/companySales.controller';
@@ -22,6 +22,8 @@ import { routePermission } from '../middlewares/routePermissionMiddleware';
 const router = Router();
 
 router.post('/login', companyLoginValidation, CompanyAuthController.login);
+router.post('/login/verify-otp', verifyLoginOtpValidation, CompanyAuthController.verifyLoginOtp);
+router.get('/login-config', CompanySettingsController.getLoginConfig);
 router.get('/validate', authenticate, enforceTenant, CompanyAuthController.validateSession);
 
 router.use(authenticate, enforceTenant, enforceEmployeeLoginEnabled);

@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
 import { Employee, IEmployee, EmployeeTheme } from '../models/Employee';
-import { Company } from '../models/Company';
+import { Company, ICompany } from '../models/Company';
 import { Roles, CompanyStatus } from '../constants/index';
 import { generateAccessToken, generateRefreshToken, ITokenPayload } from '../utils/jwt';
 import { Group } from '../models/Group';
@@ -17,6 +17,7 @@ import { RemoteSupport } from '../models/RemoteSupport';
 import { ProjectService } from './projectService';
 import { AttendanceStatus, LeaveStatus } from '../constants/index';
 import { getBusinessDayEnd, getBusinessDayStart, getBusinessMonthRange, getBusinessMonthString } from '../utils/businessDate';
+import { OtpService } from './otpService';
 
 
 const messageWithSender = (message: IMessage, userId: string) => {
@@ -73,31 +74,12 @@ export class CompanyAuthService {
     return employee ? [employee._id.toString()] : [];
   }
 
-  static async login(identifier: string, password: string) {
-    const company = await Company.findOne({ status: CompanyStatus.ACTIVE });
-    if (!company) {
-      throw { statusCode: 401, message: 'Company not configured.' };
-    }
-    let employee: IEmployee | null = null;
-    if (identifier.includes('@')) {
-      employee = await Employee.findOne({ companyId: company._id, email: identifier.toLowerCase() });
-    } else {
-      employee = await Employee.findOne({ companyId: company._id, employeeId: identifier.trim() });
-    }
-    if (!employee || employee.isSuspended) {
-      throw { statusCode: 401, message: 'Invalid employee credentials or account suspended.' };
-    }
+  private static isOtpRequired(employee: IEmployee, company: ICompany) {
+    if (employee.role === Roles.COMPANY_ADMIN) return true;
+    return company.settings?.employeeOtpEnabled === true;
+  }
 
-    // If employee login is disabled for company, block non-admins
-    if (company.settings && company.settings.employeeLoginEnabled === false && employee.role !== Roles.COMPANY_ADMIN) {
-      throw { statusCode: 403, message: 'Employee login is currently disabled by Admin.' };
-    }
-
-    const isMatch = await bcrypt.compare(password, employee.passwordHash);
-    if (!isMatch) {
-      throw { statusCode: 401, message: 'Invalid employee credentials.' };
-    }
-
+  private static async completeLogin(employee: IEmployee, company: ICompany) {
     const payload: ITokenPayload = {
       id: employee._id.toString(),
       role: employee.role,
@@ -132,6 +114,66 @@ export class CompanyAuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  private static async authenticateCredentials(identifier: string, password: string) {
+    const company = await Company.findOne({ status: CompanyStatus.ACTIVE });
+    if (!company) {
+      throw { statusCode: 401, message: 'Company not configured.' };
+    }
+    let employee: IEmployee | null = null;
+    if (identifier.includes('@')) {
+      employee = await Employee.findOne({ companyId: company._id, email: identifier.toLowerCase() });
+    } else {
+      employee = await Employee.findOne({ companyId: company._id, employeeId: identifier.trim() });
+    }
+    if (!employee || employee.isSuspended) {
+      throw { statusCode: 401, message: 'Invalid employee credentials or account suspended.' };
+    }
+
+    if (company.settings && company.settings.employeeLoginEnabled === false && employee.role !== Roles.COMPANY_ADMIN) {
+      throw { statusCode: 403, message: 'Employee login is currently disabled by Admin.' };
+    }
+
+    const isMatch = await bcrypt.compare(password, employee.passwordHash);
+    if (!isMatch) {
+      throw { statusCode: 401, message: 'Invalid employee credentials.' };
+    }
+
+    return { employee, company };
+  }
+
+  static async login(identifier: string, password: string) {
+    const { employee, company } = await this.authenticateCredentials(identifier, password);
+
+    if (this.isOtpRequired(employee, company)) {
+      const email = employee.email?.toLowerCase();
+      if (!email) {
+        throw { statusCode: 400, message: 'No email on file for OTP verification. Contact your admin to add your email.' };
+      }
+      const otpSession = await OtpService.createAndSendLoginOtp(employee._id.toString(), company._id.toString(), email, employee.name);
+      return {
+        otpRequired: true as const,
+        otpToken: otpSession.otpToken,
+        maskedEmail: otpSession.maskedEmail,
+        role: employee.role,
+      };
+    }
+
+    const result = await this.completeLogin(employee, company);
+    return { otpRequired: false as const, ...result };
+  }
+
+  static async verifyLoginOtp(otpToken: string, otp: string) {
+    const { employeeId, companyId } = await OtpService.verifyLoginOtp(otpToken, otp);
+    const [employee, company] = await Promise.all([
+      Employee.findOne({ _id: employeeId, companyId }),
+      Company.findById(companyId),
+    ]);
+    if (!employee || employee.isSuspended || !company || company.status !== CompanyStatus.ACTIVE) {
+      throw { statusCode: 401, message: 'Login session invalid. Please login again.' };
+    }
+    return this.completeLogin(employee, company);
   }
 
   static async recordLogout(employeeId: string, companyId: string) {

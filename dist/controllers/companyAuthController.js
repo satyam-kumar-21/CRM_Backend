@@ -16,6 +16,15 @@ class CompanyAuthController {
             const { employeeId, email, password } = req.body;
             const identifier = email || employeeId;
             const result = await companyAuthService_1.CompanyAuthService.login(identifier, password);
+            if (result.otpRequired) {
+                responseHandler_1.ApiResponse.success(res, 'OTP sent to your email', {
+                    otpRequired: true,
+                    otpToken: result.otpToken,
+                    maskedEmail: result.maskedEmail,
+                    role: result.role,
+                });
+                return;
+            }
             res.cookie('accessToken', result.accessToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
@@ -29,6 +38,33 @@ class CompanyAuthController {
                 maxAge: 7 * 24 * 60 * 60 * 1000,
             });
             responseHandler_1.ApiResponse.success(res, 'Company user authenticated successfully', result);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async verifyLoginOtp(req, res, next) {
+        try {
+            const errors = (0, express_validator_1.validationResult)(req);
+            if (!errors.isEmpty()) {
+                res.status(400).json({ success: false, errors: errors.array() });
+                return;
+            }
+            const { otpToken, otp } = req.body;
+            const result = await companyAuthService_1.CompanyAuthService.verifyLoginOtp(otpToken, otp);
+            res.cookie('accessToken', result.accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                maxAge: 15 * 60 * 1000,
+            });
+            res.cookie('refreshToken', result.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000,
+            });
+            responseHandler_1.ApiResponse.success(res, 'OTP verified successfully', result);
         }
         catch (error) {
             next(error);

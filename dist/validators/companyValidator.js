@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createLeaveValidation = exports.markSaleFailedValidation = exports.saleValidation = exports.updateLeadValidation = exports.leadValidation = exports.postMessageValidation = exports.updateGroupValidation = exports.createGroupValidation = exports.updateEmployeeValidation = exports.createEmployeeValidation = exports.companyLoginValidation = void 0;
+exports.createLeaveValidation = exports.markSaleFailedValidation = exports.saleValidation = exports.updateLeadValidation = exports.leadValidation = exports.postMessageValidation = exports.updateGroupValidation = exports.createGroupValidation = exports.updateEmployeeValidation = exports.createEmployeeValidation = exports.verifyLoginOtpValidation = exports.companyLoginValidation = void 0;
 const express_validator_1 = require("express-validator");
 const index_1 = require("../constants/index");
 const normalizeRole = (value) => {
@@ -18,6 +18,10 @@ exports.companyLoginValidation = [
         return true;
     }),
     (0, express_validator_1.body)('email').optional().isEmail().withMessage('Please provide a valid email address'),
+];
+exports.verifyLoginOtpValidation = [
+    (0, express_validator_1.body)('otpToken').notEmpty().withMessage('OTP session token is required'),
+    (0, express_validator_1.body)('otp').trim().notEmpty().withMessage('OTP is required').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
 ];
 exports.createEmployeeValidation = [
     (0, express_validator_1.body)('name').trim().notEmpty().withMessage('Employee name is required'),

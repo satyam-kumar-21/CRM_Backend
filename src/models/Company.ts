@@ -18,6 +18,7 @@ export interface ICompany extends Document {
   settings?: {
     companyName?: string;
     employeeLoginEnabled?: boolean;
+    employeeOtpEnabled?: boolean;
     routePermissions?: { [key: string]: boolean };
     holidays?: { name: string; date: Date }[];
   };
@@ -43,6 +44,7 @@ const CompanySchema = new Schema<ICompany>(
     settings: {
       companyName: { type: String, default: '' },
       employeeLoginEnabled: { type: Boolean, default: true },
+      employeeOtpEnabled: { type: Boolean, default: false },
       routePermissions: { type: Map, of: Boolean, default: {} },
       holidays: [{ name: { type: String }, date: { type: Date } }],
     },

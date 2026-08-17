@@ -30,6 +30,8 @@ class CompanySettingsController {
                 settings.companyName = payload.companyName;
             if (typeof payload.employeeLoginEnabled === 'boolean')
                 settings.employeeLoginEnabled = payload.employeeLoginEnabled;
+            if (typeof payload.employeeOtpEnabled === 'boolean')
+                settings.employeeOtpEnabled = payload.employeeOtpEnabled;
             if (typeof payload.routePermissions === 'object')
                 settings.routePermissions = payload.routePermissions;
             if (Array.isArray(payload.holidays))

@@ -4,9 +4,23 @@ import { ApiResponse } from '../utils/responseHandler';
 import { AuthenticatedRequest } from '../middlewares/authMiddleware';
 import { emitUserEvent, disconnectUser } from '../realtime/socket';
 import { Employee } from '../models/Employee';
-import { Roles } from '../constants/index';
+import { Roles, CompanyStatus } from '../constants/index';
 
 export class CompanySettingsController {
+  static async getLoginConfig(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const company = await Company.findOne({ status: CompanyStatus.ACTIVE }).select('settings name');
+      if (!company) return ApiResponse.error(res, 'Company not configured', 404);
+      ApiResponse.success(res, 'Login config fetched', {
+        companyName: company.settings?.companyName || company.name,
+        employeeLoginEnabled: company.settings?.employeeLoginEnabled !== false,
+        employeeOtpEnabled: company.settings?.employeeOtpEnabled === true,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getSettings(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const company = await Company.findById(req.user!.companyId).select('settings name');
@@ -28,6 +42,7 @@ export class CompanySettingsController {
 
       if (typeof payload.companyName === 'string') settings.companyName = payload.companyName;
       if (typeof payload.employeeLoginEnabled === 'boolean') settings.employeeLoginEnabled = payload.employeeLoginEnabled;
+      if (typeof payload.employeeOtpEnabled === 'boolean') settings.employeeOtpEnabled = payload.employeeOtpEnabled;
       if (typeof payload.routePermissions === 'object') settings.routePermissions = payload.routePermissions;
       if (Array.isArray(payload.holidays)) settings.holidays = payload.holidays.map((h: any) => ({ name: h.name, date: h.date }));
 

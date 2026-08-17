@@ -21,6 +21,7 @@ const projectController_1 = require("../controllers/projectController");
 const routePermissionMiddleware_1 = require("../middlewares/routePermissionMiddleware");
 const router = (0, express_1.Router)();
 router.post('/login', companyValidator_1.companyLoginValidation, companyAuthController_1.CompanyAuthController.login);
+router.post('/login/verify-otp', companyValidator_1.verifyLoginOtpValidation, companyAuthController_1.CompanyAuthController.verifyLoginOtp);
 router.get('/validate', authMiddleware_1.authenticate, tenantMiddleware_1.enforceTenant, companyAuthController_1.CompanyAuthController.validateSession);
 router.use(authMiddleware_1.authenticate, tenantMiddleware_1.enforceTenant, companySettingsMiddleware_1.enforceEmployeeLoginEnabled);
 router.post('/logout', companyAuthController_1.CompanyAuthController.logout);
