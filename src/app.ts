@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
-import { apiRateLimiter } from './middlewares/rateLimiter';
+// import { apiRateLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorMiddleware';
 import companyRoutes from './routes/companyRoutes';
 
@@ -36,7 +36,7 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use('/api', apiRateLimiter);
+// app.use('/api', apiRateLimiter);
 app.use('/api/v1/company', companyRoutes);
 
 // Health Check Endpoint
