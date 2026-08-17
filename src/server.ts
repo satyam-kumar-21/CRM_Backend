@@ -8,14 +8,14 @@ import { createServer } from 'http';
 import { configureSocket } from './realtime/socket';
 
 const PORT: number = Number(process.env.PORT) || 5000;
-// const HOST = '0.0.0.0';
+const HOST = '0.0.0.0';
 
 const startServer = async () => {
   await connectDB();
 
   const server = createServer(app);
   configureSocket(server);
-  server.listen(PORT, () => {
+  server.listen(PORT, HOST, () => {
     console.log(`[Server] Enterprise CRM Engine active on port ${PORT}`);
   });
 };
