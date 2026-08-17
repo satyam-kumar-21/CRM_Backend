@@ -62,8 +62,9 @@ class CompanySalesController {
     static async getSales(req, res, next) {
         try {
             const failed = req.query.failed === 'true';
+            const pending = req.query.pending === 'true';
             res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-            responseHandler_1.ApiResponse.success(res, 'Sales fetched successfully', await companySalesService_1.CompanySalesService.getSales(req.user.companyId, req.user.role, req.user.id, failed));
+            responseHandler_1.ApiResponse.success(res, 'Sales fetched successfully', await companySalesService_1.CompanySalesService.getSales(req.user.companyId, req.user.role, req.user.id, failed, pending));
         }
         catch (error) {
             next(error);
@@ -97,7 +98,8 @@ class CompanySalesController {
                 return;
             const admin = await Employee_1.Employee.findOne({ companyId: req.user.companyId, _id: req.user.id }).select('name');
             const failedByName = admin?.name || 'Admin';
-            responseHandler_1.ApiResponse.success(res, 'Sale marked as failed successfully', await companySalesService_1.CompanySalesService.markSaleFailed(req.user.companyId, req.params.id, req.body.failedReason, req.user.id, failedByName), 200);
+            const saleStatus = req.body.saleStatus || 'DROPPED';
+            responseHandler_1.ApiResponse.success(res, 'Sale status updated successfully', await companySalesService_1.CompanySalesService.markSaleFailed(req.user.companyId, req.params.id, req.body.failedReason || '', req.user.id, failedByName, saleStatus), 200);
         }
         catch (error) {
             next(error);

@@ -7,8 +7,9 @@ const strict_1 = __importDefault(require("node:assert/strict"));
 const companySalesService_1 = require("../services/companySalesService");
 strict_1.default.strictEqual(typeof companySalesService_1.CompanySalesService.createUpgrade, 'function');
 const totals = companySalesService_1.CompanySalesService.calculateSalesTotals([
-    { customerType: 'NEW', amount: 10000, finalAmount: 10000, transactionType: 'SALE' },
-    { customerType: 'UPGRADE', amount: 5000, finalAmount: 5000, transactionType: 'UPGRADE' },
+    { customerType: 'NEW', amount: 10000, finalAmount: 10000, transactionType: 'SALE', saleStatus: 'CHARGED' },
+    { customerType: 'UPGRADE', amount: 5000, finalAmount: 5000, transactionType: 'UPGRADE', saleStatus: 'CHARGED' },
+    { customerType: 'NEW', amount: 7000, finalAmount: 7000, transactionType: 'SALE', saleStatus: 'DROPPED' },
 ]);
 strict_1.default.strictEqual(totals.transactionCount, 2);
 strict_1.default.strictEqual(totals.revenue, 15000);

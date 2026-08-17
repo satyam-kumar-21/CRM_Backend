@@ -111,8 +111,16 @@ exports.saleValidation = [
     (0, express_validator_1.body)('paymentMerchant').optional().trim(),
 ];
 exports.markSaleFailedValidation = [
-    (0, express_validator_1.body)('failed').isBoolean().withMessage('Failed status is required').custom((value) => value === true).withMessage('Sale must be marked as failed'),
-    (0, express_validator_1.body)('failedReason').trim().notEmpty().withMessage('Failed reason is required when marking a sale failed'),
+    (0, express_validator_1.body)('failed').optional().isBoolean().withMessage('Failed must be a boolean'),
+    (0, express_validator_1.body)('saleStatus').optional().isIn(['PENDING', 'CHARGED', 'DROPPED']).withMessage('Sale status must be PENDING, CHARGED or DROPPED'),
+    (0, express_validator_1.body)('failedReason').optional().trim(),
+    (0, express_validator_1.body)().custom((value) => {
+        const saleStatus = value.saleStatus || (value.failed === true ? 'DROPPED' : 'CHARGED');
+        if (saleStatus === 'DROPPED' && (!value.failedReason || !String(value.failedReason).trim())) {
+            throw new Error('Dropped reason is required when a sale is marked as dropped');
+        }
+        return true;
+    }),
 ];
 exports.createLeaveValidation = [
     (0, express_validator_1.body)('leaveType').isIn(['CASUAL', 'SICK', 'MATERNITY', 'ANNUAL']).withMessage('Valid leave type is required'),

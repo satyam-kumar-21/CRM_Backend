@@ -198,7 +198,10 @@ export class CompanyAuthService {
       isRead: false,
     });
 
-    const nonFailedSaleFilter: any = { failed: { $ne: true } };
+    const nonFailedSaleFilter: any = {
+      failed: { $ne: true },
+      $or: [{ saleStatus: 'CHARGED' }, { saleStatus: { $exists: false } }, { saleStatus: null }],
+    };
     const currentMonth = getBusinessMonthString();
     const { start: monthStart, end: monthEnd } = getBusinessMonthRange(currentMonth);
     const companyTotalLeads = await Lead.countDocuments({ companyId: actualCompanyId });

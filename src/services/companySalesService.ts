@@ -282,11 +282,12 @@ export class CompanySalesService {
     return { id };
   }
 
-  static calculateSalesTotals<T extends { amount?: number; finalAmount?: number; transactionType?: string; customerType?: string }>(records: T[] = []) {
+  static calculateSalesTotals<T extends { amount?: number; finalAmount?: number; transactionType?: string; customerType?: string; saleStatus?: string; failed?: boolean }>(records: T[] = []) {
     let revenue = 0;
     let transactionCount = 0;
 
     for (const record of records) {
+      if (record.saleStatus === 'DROPPED' || record.saleStatus === 'PENDING' || record.failed === true) continue;
       const amount = Number(record.finalAmount ?? record.amount ?? 0);
       if (!Number.isFinite(amount) || amount <= 0) continue;
       revenue += amount;
@@ -296,10 +297,18 @@ export class CompanySalesService {
     return { revenue, transactionCount };
   }
 
-  static async getSales(companyId: string, role: string, employeeId: string, failed = false) {
-    const statusQuery: any = failed
-      ? { failed: true }
-      : { $or: [{ failed: false }, { failed: { $exists: false } }] };
+  static async getSales(companyId: string, role: string, employeeId: string, failed = false, pending = false) {
+    const currentBDate = getBusinessDateString();
+    const statusQuery: any = pending
+      ? { saleStatus: 'PENDING', businessDate: currentBDate }
+      : failed
+        ? { failed: true }
+        : {
+            $and: [
+              { $or: [{ failed: false }, { failed: { $exists: false } }] },
+              { $or: [{ saleStatus: 'CHARGED' }, { saleStatus: { $exists: false } }, { saleStatus: null }] },
+            ],
+          };
 
     if (role === Roles.COMPANY_ADMIN) {
       return Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 });
@@ -385,6 +394,7 @@ export class CompanySalesService {
       finalAmount,
       saleDate: data.saleDate || currentBDate,
       businessDate: currentBDate,
+      saleStatus: data.saleStatus || 'PENDING',
       salesEmployeeRemark,
       verificationStatus: 'PENDING',
       feedbackStatus: 'PENDING',
@@ -416,6 +426,9 @@ export class CompanySalesService {
       { companyId, _id: id },
       {
         ...data,
+        saleStatus: data.saleStatus || existing.saleStatus || 'PENDING',
+        failed: data.saleStatus === 'DROPPED' ? true : existing.failed && data.saleStatus !== 'CHARGED',
+        failedReason: data.saleStatus === 'DROPPED' ? (data.failedReason || existing.failedReason || '').trim() : '',
         salesEmployeeRemark: data.salesEmployeeRemark !== undefined ? data.salesEmployeeRemark.trim() : existing.salesEmployeeRemark || '',
         mainAmount,
         upgradedAmount,
@@ -432,20 +445,42 @@ export class CompanySalesService {
     return updated;
   }
 
-  static async markSaleFailed(companyId: string, id: string, failedReason: string, failedById: string, failedByName: string) {
-    if (!failedReason || !failedReason.trim()) throw { statusCode: 400, message: 'Failed reason is required.' };
+  static async markSaleFailed(companyId: string, id: string, failedReason: string, failedById: string, failedByName: string, saleStatus: 'PENDING' | 'CHARGED' | 'DROPPED' = 'DROPPED') {
+    const trimmedReason = failedReason?.trim() || '';
+    if (saleStatus === 'DROPPED' && !trimmedReason) throw { statusCode: 400, message: 'Dropped reason is required.' };
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextBDate = getBusinessDateString(tomorrow);
+
+    const updateData: any = {
+      saleStatus,
+      failed: saleStatus === 'DROPPED',
+      failedReason: saleStatus === 'DROPPED' ? trimmedReason : '',
+      failedAt: saleStatus === 'DROPPED' ? new Date() : null,
+      failedBy: saleStatus === 'DROPPED' ? failedById : null,
+      failedByName: saleStatus === 'DROPPED' ? failedByName : '',
+    };
+
+    // When marking as CHARGED, initialize verification and feedback workflow
+    if (saleStatus === 'CHARGED') {
+      updateData.verificationStatus = 'PENDING';
+      updateData.feedbackStatus = 'PENDING';
+      updateData.feedbackBusinessDate = nextBDate;
+    }
+
     const sale = await Sale.findOneAndUpdate(
       { companyId, _id: id },
-      {
-        failed: true,
-        failedReason: failedReason.trim(),
-        failedAt: new Date(),
-        failedBy: failedById,
-        failedByName,
-      },
+      updateData,
       { new: true, runValidators: true }
     );
     if (!sale) throw { statusCode: 404, message: 'Sale not found.' };
+
+    // Assign verification employee if marking as CHARGED
+    if (saleStatus === 'CHARGED' && sale) {
+      await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
+    }
+
     emitCompanyEvent('sale:updated', sale);
     return sale;
   }
@@ -736,7 +771,11 @@ export class CompanySalesService {
       }
     }
 
-    const query: any = { companyId, failed: { $ne: true } };
+    const query: any = {
+      companyId,
+      failed: { $ne: true },
+      $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
+    };
     if (filters.status) query.verificationStatus = filters.status;
     if (role === Roles.VERIFICATION) {
       query.$or = [
@@ -818,6 +857,7 @@ export class CompanySalesService {
     const query: any = {
       companyId,
       failed: { $ne: true },
+      $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
       verificationStatus: 'SUCCESSFUL',
     };
 
@@ -922,6 +962,7 @@ export class CompanySalesService {
     }
 
     if (role === Roles.VERIFICATION) {
+      // Assign any unassigned pending verifications to this employee
       const unassigned = await Sale.find({
         companyId,
         failed: { $ne: true },
@@ -936,44 +977,21 @@ export class CompanySalesService {
         await CompanySalesService.assignVerificationEmployeeIfMissing(companyId, sale._id.toString(), employeeId, employeeName);
       }
 
+      // Show ALL pending/in-progress verifications to all verification employees (not just assigned ones)
       const verifications = await Sale.find({
         companyId,
         failed: { $ne: true },
-        $and: [
-          {
-            $or: [
-              { verificationEmployeeId: new Types.ObjectId(employeeId) },
-              { verificationEmployeeId: null },
-              { verificationEmployeeId: { $exists: false } },
-            ],
-          },
-          {
-            $or: [
-              { verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] } },
-              { verifiedBy: new Types.ObjectId(feedbackByIdOrVerifiedById(employeeId)) },
-            ],
-          },
-        ],
+        verificationStatus: { $in: ['PENDING', 'IN_PROGRESS'] },
       }).sort({ createdAt: -1 });
 
+      // Show successful verifications pending feedback
       const feedbacks = await Sale.find({
         companyId,
         failed: { $ne: true },
         verificationStatus: 'SUCCESSFUL',
-        $and: [
-          {
-            $or: [
-              { verificationEmployeeId: new Types.ObjectId(employeeId) },
-              { verificationEmployeeId: null },
-              { verificationEmployeeId: { $exists: false } },
-            ],
-          },
-          {
-            $or: [
-              { feedbackBusinessDate: { $lte: currentBDate } },
-              { feedbackStatus: 'COMPLETED' },
-            ],
-          },
+        $or: [
+          { feedbackBusinessDate: { $lte: currentBDate } },
+          { feedbackStatus: { $ne: 'COMPLETED' } },
         ],
       }).sort({ createdAt: -1 });
 

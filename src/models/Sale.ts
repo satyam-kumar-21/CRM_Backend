@@ -34,6 +34,7 @@ export interface ISale extends Document {
   paymentMethod: PaymentMethod;
   saleDate: string;
   businessDate: string;
+  saleStatus: 'PENDING' | 'CHARGED' | 'DROPPED';
   failed: boolean;
   failedReason: string;
   failedAt?: Date | null;
@@ -100,6 +101,7 @@ const SaleSchema = new Schema<ISale>(
     paymentMethod: { type: String, enum: ['Card', 'Check', 'Wire Transfer', 'Cash', 'UPI', 'Bank Transfer', 'Online', 'Other'], required: true },
     saleDate: { type: String, required: true },
     businessDate: { type: String, default: '' },
+    saleStatus: { type: String, enum: ['PENDING', 'CHARGED', 'DROPPED'], default: 'PENDING' },
     failed: { type: Boolean, default: false },
     failedReason: { type: String, default: 'N/A' },
     failedAt: { type: Date, default: null },

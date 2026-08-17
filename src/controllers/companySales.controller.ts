@@ -72,11 +72,12 @@ export class CompanySalesController {
   static async getSales(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const failed = req.query.failed === 'true';
+      const pending = req.query.pending === 'true';
       res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       ApiResponse.success(
         res,
         'Sales fetched successfully',
-        await CompanySalesService.getSales(req.user!.companyId!, req.user!.role, req.user!.id, failed)
+        await CompanySalesService.getSales(req.user!.companyId!, req.user!.role, req.user!.id, failed, pending)
       );
     } catch (error) {
       next(error);
@@ -113,10 +114,11 @@ export class CompanySalesController {
       if (!validate(req, res)) return;
       const admin = await Employee.findOne({ companyId: req.user!.companyId, _id: req.user!.id }).select('name');
       const failedByName = admin?.name || 'Admin';
+      const saleStatus = (req.body.saleStatus as 'PENDING' | 'CHARGED' | 'DROPPED') || 'DROPPED';
       ApiResponse.success(
         res,
-        'Sale marked as failed successfully',
-        await CompanySalesService.markSaleFailed(req.user!.companyId!, req.params.id, req.body.failedReason, req.user!.id, failedByName),
+        'Sale status updated successfully',
+        await CompanySalesService.markSaleFailed(req.user!.companyId!, req.params.id, req.body.failedReason || '', req.user!.id, failedByName, saleStatus),
         200
       );
     } catch (error) {

@@ -8,12 +8,12 @@ export class AttendanceController {
   static async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const isAdmin = req.user!.role === Roles.COMPANY_ADMIN;
-      const records = await AttendanceService.list(req.user!.companyId!, isAdmin ? undefined : req.user!.id, {
+      const { records, summary } = await AttendanceService.list(req.user!.companyId!, isAdmin ? undefined : req.user!.id, {
         employeeId: isAdmin ? req.query.employeeId as string | undefined : undefined,
         from: req.query.from as string | undefined,
         to: req.query.to as string | undefined,
       });
-      ApiResponse.success(res, 'Attendance fetched successfully', records);
+      ApiResponse.success(res, 'Attendance fetched successfully', { records, summary });
     } catch (error) { next(error); }
   }
 

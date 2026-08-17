@@ -184,7 +184,10 @@ class CompanyAuthService {
             recipientId: employee._id,
             isRead: false,
         });
-        const nonFailedSaleFilter = { failed: { $ne: true } };
+        const nonFailedSaleFilter = {
+            failed: { $ne: true },
+            $or: [{ saleStatus: 'CHARGED' }, { saleStatus: { $exists: false } }, { saleStatus: null }],
+        };
         const currentMonth = (0, businessDate_1.getBusinessMonthString)();
         const { start: monthStart, end: monthEnd } = (0, businessDate_1.getBusinessMonthRange)(currentMonth);
         const companyTotalLeads = await Lead_1.Lead.countDocuments({ companyId: actualCompanyId });

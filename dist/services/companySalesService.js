@@ -200,6 +200,8 @@ class CompanySalesService {
         let revenue = 0;
         let transactionCount = 0;
         for (const record of records) {
+            if (record.saleStatus === 'DROPPED' || record.saleStatus === 'PENDING' || record.failed === true)
+                continue;
             const amount = Number(record.finalAmount ?? record.amount ?? 0);
             if (!Number.isFinite(amount) || amount <= 0)
                 continue;
@@ -208,10 +210,17 @@ class CompanySalesService {
         }
         return { revenue, transactionCount };
     }
-    static async getSales(companyId, role, employeeId, failed = false) {
-        const statusQuery = failed
-            ? { failed: true }
-            : { $or: [{ failed: false }, { failed: { $exists: false } }] };
+    static async getSales(companyId, role, employeeId, failed = false, pending = false) {
+        const statusQuery = pending
+            ? { saleStatus: 'PENDING' }
+            : failed
+                ? { failed: true }
+                : {
+                    $and: [
+                        { $or: [{ failed: false }, { failed: { $exists: false } }] },
+                        { $or: [{ saleStatus: 'CHARGED' }, { saleStatus: { $exists: false } }, { saleStatus: null }] },
+                    ],
+                };
         if (role === index_1.Roles.COMPANY_ADMIN) {
             return Sale_1.Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 });
         }
@@ -288,6 +297,7 @@ class CompanySalesService {
             finalAmount,
             saleDate: data.saleDate || currentBDate,
             businessDate: currentBDate,
+            saleStatus: data.saleStatus || 'PENDING',
             salesEmployeeRemark,
             verificationStatus: 'PENDING',
             feedbackStatus: 'PENDING',
@@ -313,6 +323,9 @@ class CompanySalesService {
         const finalAmount = Number(data.finalAmount ?? derivedFinalAmount);
         const updated = await Sale_1.Sale.findOneAndUpdate({ companyId, _id: id }, {
             ...data,
+            saleStatus: data.saleStatus || existing.saleStatus || 'PENDING',
+            failed: data.saleStatus === 'DROPPED' ? true : existing.failed && data.saleStatus !== 'CHARGED',
+            failedReason: data.saleStatus === 'DROPPED' ? (data.failedReason || existing.failedReason || '').trim() : '',
             salesEmployeeRemark: data.salesEmployeeRemark !== undefined ? data.salesEmployeeRemark.trim() : existing.salesEmployeeRemark || '',
             mainAmount,
             upgradedAmount,
@@ -327,15 +340,17 @@ class CompanySalesService {
         (0, socket_1.emitCompanyEvent)('sale:updated', updated);
         return updated;
     }
-    static async markSaleFailed(companyId, id, failedReason, failedById, failedByName) {
-        if (!failedReason || !failedReason.trim())
-            throw { statusCode: 400, message: 'Failed reason is required.' };
+    static async markSaleFailed(companyId, id, failedReason, failedById, failedByName, saleStatus = 'DROPPED') {
+        const trimmedReason = failedReason?.trim() || '';
+        if (saleStatus === 'DROPPED' && !trimmedReason)
+            throw { statusCode: 400, message: 'Dropped reason is required.' };
         const sale = await Sale_1.Sale.findOneAndUpdate({ companyId, _id: id }, {
-            failed: true,
-            failedReason: failedReason.trim(),
-            failedAt: new Date(),
-            failedBy: failedById,
-            failedByName,
+            saleStatus,
+            failed: saleStatus === 'DROPPED',
+            failedReason: saleStatus === 'DROPPED' ? trimmedReason : '',
+            failedAt: saleStatus === 'DROPPED' ? new Date() : null,
+            failedBy: saleStatus === 'DROPPED' ? failedById : null,
+            failedByName: saleStatus === 'DROPPED' ? failedByName : '',
         }, { new: true, runValidators: true });
         if (!sale)
             throw { statusCode: 404, message: 'Sale not found.' };
@@ -606,7 +621,11 @@ class CompanySalesService {
                 await CompanySalesService.assignVerificationEmployeeIfMissing(companyId, sale._id.toString(), employeeId, 'Verification Employee');
             }
         }
-        const query = { companyId, failed: { $ne: true } };
+        const query = {
+            companyId,
+            failed: { $ne: true },
+            $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
+        };
         if (filters.status)
             query.verificationStatus = filters.status;
         if (role === index_1.Roles.VERIFICATION) {
@@ -682,6 +701,7 @@ class CompanySalesService {
         const query = {
             companyId,
             failed: { $ne: true },
+            $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
             verificationStatus: 'SUCCESSFUL',
         };
         if (filters.status === 'PENDING') {

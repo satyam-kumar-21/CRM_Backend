@@ -118,8 +118,16 @@ export const saleValidation = [
 ];
 
 export const markSaleFailedValidation = [
-  body('failed').isBoolean().withMessage('Failed status is required').custom((value) => value === true).withMessage('Sale must be marked as failed'),
-  body('failedReason').trim().notEmpty().withMessage('Failed reason is required when marking a sale failed'),
+  body('failed').optional().isBoolean().withMessage('Failed must be a boolean'),
+  body('saleStatus').optional().isIn(['PENDING', 'CHARGED', 'DROPPED']).withMessage('Sale status must be PENDING, CHARGED or DROPPED'),
+  body('failedReason').optional().trim(),
+  body().custom((value) => {
+    const saleStatus = value.saleStatus || (value.failed === true ? 'DROPPED' : 'CHARGED');
+    if (saleStatus === 'DROPPED' && (!value.failedReason || !String(value.failedReason).trim())) {
+      throw new Error('Dropped reason is required when a sale is marked as dropped');
+    }
+    return true;
+  }),
 ];
 
 export const createLeaveValidation = [

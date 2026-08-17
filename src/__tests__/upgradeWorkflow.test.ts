@@ -4,8 +4,9 @@ import { CompanySalesService } from '../services/companySalesService';
 assert.strictEqual(typeof CompanySalesService.createUpgrade, 'function');
 
 const totals = CompanySalesService.calculateSalesTotals([
-  { customerType: 'NEW', amount: 10000, finalAmount: 10000, transactionType: 'SALE' },
-  { customerType: 'UPGRADE', amount: 5000, finalAmount: 5000, transactionType: 'UPGRADE' },
+  { customerType: 'NEW', amount: 10000, finalAmount: 10000, transactionType: 'SALE', saleStatus: 'CHARGED' },
+  { customerType: 'UPGRADE', amount: 5000, finalAmount: 5000, transactionType: 'UPGRADE', saleStatus: 'CHARGED' },
+  { customerType: 'NEW', amount: 7000, finalAmount: 7000, transactionType: 'SALE', saleStatus: 'DROPPED' },
 ]);
 
 assert.strictEqual(totals.transactionCount, 2);

@@ -8,12 +8,12 @@ class AttendanceController {
     static async list(req, res, next) {
         try {
             const isAdmin = req.user.role === index_1.Roles.COMPANY_ADMIN;
-            const records = await attendanceService_1.AttendanceService.list(req.user.companyId, isAdmin ? undefined : req.user.id, {
+            const { records, summary } = await attendanceService_1.AttendanceService.list(req.user.companyId, isAdmin ? undefined : req.user.id, {
                 employeeId: isAdmin ? req.query.employeeId : undefined,
                 from: req.query.from,
                 to: req.query.to,
             });
-            responseHandler_1.ApiResponse.success(res, 'Attendance fetched successfully', records);
+            responseHandler_1.ApiResponse.success(res, 'Attendance fetched successfully', { records, summary });
         }
         catch (error) {
             next(error);
