@@ -11,12 +11,12 @@ const db_1 = require("./config/db");
 const http_1 = require("http");
 const socket_1 = require("./realtime/socket");
 const PORT = Number(process.env.PORT) || 5000;
-// const HOST = '0.0.0.0';
+const HOST = '0.0.0.0';
 const startServer = async () => {
     await (0, db_1.connectDB)();
     const server = (0, http_1.createServer)(app_1.default);
     (0, socket_1.configureSocket)(server);
-    server.listen(PORT, () => {
+    server.listen(PORT, HOST, () => {
         console.log(`[Server] Enterprise CRM Engine active on port ${PORT}`);
     });
 };

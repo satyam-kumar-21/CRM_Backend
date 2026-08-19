@@ -29,7 +29,7 @@ const LeadSchema = new mongoose_1.Schema({
     techSupportEmployeeName: { type: String, default: '', trim: true },
     techSupportCompletedAt: { type: Date },
     paymentConfirmed: { type: String, enum: ['yes', 'no'] },
-    finalStatus: { type: String, enum: ['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED'] },
+    finalStatus: { type: String, enum: ['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED', 'NOT_SALE'] },
     status: { type: String, enum: ['OPEN', 'COMPLETED'], default: 'OPEN' },
     completionReason: { type: String, default: '' },
     salesEmployeeRemark: { type: String, default: '', trim: true },

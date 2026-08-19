@@ -26,14 +26,16 @@ const sendLoginOtpEmail = async (to, otp, name) => {
     await transporter.sendMail({
         from: `"CRM Login" <${from}>`,
         to,
-        subject: 'Your CRM Login OTP',
+        subject: 'Employee Login Request - OTP for Approval',
         html: `
-      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
         <h2 style="color:#4f46e5;margin:0 0 12px;">Login Verification</h2>
-        <p style="color:#374151;">Hi ${name},</p>
-        <p style="color:#374151;">Use this one-time password to complete your login:</p>
+        <p style="color:#374151;">Hi Admin,</p>
+        <p style="color:#374151;">Your employee <strong>${name}</strong> wants to login to the CRM system.</p>
+        <p style="color:#374151;">Please share this one-time password with them if you approve the login. If you do not want them to login, you can ignore this email.</p>
         <div style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#111827;background:#f3f4f6;padding:16px 24px;border-radius:8px;text-align:center;margin:16px 0;">${otp}</div>
-        <p style="color:#6b7280;font-size:13px;">This code expires in ${process.env.OTP_EXPIRY_MINUTES || '10'} minutes. Do not share it with anyone.</p>
+        <p style="color:#6b7280;font-size:13px;">This code expires in ${process.env.OTP_EXPIRY_MINUTES || '10'} minutes. Do not share it with anyone except the approved employee.</p>
+        <p style="color:#6b7280;font-size:13px;">Thank you.</p>
       </div>
     `,
     });

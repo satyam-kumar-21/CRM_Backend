@@ -7,6 +7,21 @@ const socket_1 = require("../realtime/socket");
 const Employee_1 = require("../models/Employee");
 const index_1 = require("../constants/index");
 class CompanySettingsController {
+    static async getLoginConfig(_req, res, next) {
+        try {
+            const company = await Company_1.Company.findOne({ status: index_1.CompanyStatus.ACTIVE }).select('settings name');
+            if (!company)
+                return responseHandler_1.ApiResponse.error(res, 'Company not configured', 404);
+            responseHandler_1.ApiResponse.success(res, 'Login config fetched', {
+                companyName: company.settings?.companyName || company.name,
+                employeeLoginEnabled: company.settings?.employeeLoginEnabled !== false,
+                employeeOtpEnabled: company.settings?.employeeOtpEnabled === true,
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
     static async getSettings(req, res, next) {
         try {
             const company = await Company_1.Company.findById(req.user.companyId).select('settings name');

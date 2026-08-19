@@ -138,10 +138,11 @@ export class CompanySalesController {
   static async getVerifications(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const status = req.query.status as string | undefined;
+      const today = req.query.today === 'true';
       ApiResponse.success(
         res,
         'Verifications fetched successfully',
-        await CompanySalesService.getVerifications(req.user!.companyId!, req.user!.role, req.user!.id, { status })
+        await CompanySalesService.getVerifications(req.user!.companyId!, req.user!.role, req.user!.id, { status, today })
       );
     } catch (error) {
       next(error);
@@ -221,10 +222,11 @@ export class CompanySalesController {
   static async getFeedbacks(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const status = req.query.status as string | undefined;
+      const today = req.query.today === 'true';
       ApiResponse.success(
         res,
         'Feedbacks fetched successfully',
-        await CompanySalesService.getFeedbacks(req.user!.companyId!, req.user!.role, req.user!.id, { status })
+        await CompanySalesService.getFeedbacks(req.user!.companyId!, req.user!.role, req.user!.id, { status, today })
       );
     } catch (error) {
       next(error);

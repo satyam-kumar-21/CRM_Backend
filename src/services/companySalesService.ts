@@ -35,7 +35,7 @@ type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   finalAmount?: number;
   salePaymentMethod?: ILead['salePaymentMethod'];
   paymentConfirmed?: 'yes' | 'no';
-  finalStatus?: 'PENDING_PAYMENT' | 'CLOSED' | 'PAYMENT_FAILED';
+  finalStatus?: 'PENDING_PAYMENT' | 'CLOSED' | 'PAYMENT_FAILED' | 'NOT_SALE';
   status?: 'OPEN' | 'COMPLETED';
   completionReason?: string;
   salesEmployeeRemark?: string;
@@ -256,8 +256,8 @@ export class CompanySalesService {
       return lead;
     }
 
-    // If finalStatus is PAYMENT_FAILED — close lead as no sale
-    if (data.finalStatus === 'PAYMENT_FAILED') {
+    // If finalStatus is PAYMENT_FAILED or NOT_SALE — complete lead without a sale
+    if (data.finalStatus === 'PAYMENT_FAILED' || data.finalStatus === 'NOT_SALE') {
       const lead = await Lead.findOneAndUpdate(
         { companyId, _id: id },
         { ...data, status: 'COMPLETED', isSale: 'no', paymentConfirmed: 'no' },
@@ -476,6 +476,10 @@ export class CompanySalesService {
     );
     if (!sale) throw { statusCode: 404, message: 'Sale not found.' };
 
+    if (saleStatus === 'CHARGED' && sale.transactionType === 'UPGRADE') {
+      await CompanySalesService.createUpgradeFromChargedSale(companyId, sale);
+    }
+
     // Assign verification employee if marking as CHARGED
     if (saleStatus === 'CHARGED' && sale) {
       await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
@@ -483,6 +487,63 @@ export class CompanySalesService {
 
     emitCompanyEvent('sale:updated', sale);
     return sale;
+  }
+
+  private static async createUpgradeFromChargedSale(companyId: string, sale: ISale) {
+    const existingUpgrade = await Upgrade.findOne({ companyId, saleId: sale._id });
+    if (existingUpgrade) return existingUpgrade;
+
+    const existingUpgrades = await Upgrade.countDocuments({ companyId, customerId: sale.customerId });
+    const upgrade = await Upgrade.create({
+      companyId,
+      customerId: sale.customerId,
+      customerName: sale.name,
+      customerEmail: sale.customerEmail || '',
+      mobile: sale.alternateContactNo || '',
+      country: sale.country,
+      system: sale.system,
+      salesEmployeeId: sale.salesEmployeeId,
+      salesEmployeeName: sale.salesEmployeeName || sale.connectedBy,
+      upgradedBy: sale.salesEmployeeId,
+      upgradedByName: sale.salesEmployeeName || sale.connectedBy,
+      originalSaleId: sale.leadId,
+      saleId: sale._id,
+      upgradeNumber: existingUpgrades + 1,
+      upgradeAmount: sale.upgradedAmount || sale.amount,
+      salesTaxType: sale.salesTaxType || 'PERCENTAGE',
+      salesTaxValue: sale.salesTaxValue || 0,
+      salesTaxAmount: sale.salesTaxAmount || 0,
+      finalAmount: sale.finalAmount || sale.amount,
+      paymentMethod: sale.paymentMethod,
+      salesEmployeeRemark: sale.salesEmployeeRemark || sale.issues || '',
+      status: 'PENDING',
+      techSupportStatus: sale.needsTechSupport === 'yes' ? 'PENDING' : 'NONE',
+      verificationStatus: 'PENDING',
+      feedbackStatus: 'PENDING',
+    });
+
+    if (sale.needsTechSupport === 'yes' && sale.salesEmployeeId) {
+      await RemoteSupport.create({
+        companyId,
+        upgradeId: upgrade._id,
+        customerName: sale.name,
+        customerContact: sale.alternateContactNo || '',
+        country: sale.country,
+        system: sale.system,
+        otherDetails: sale.salesEmployeeRemark || sale.issues || '',
+        salesEmployeeId: sale.salesEmployeeId,
+        salesEmployeeName: sale.salesEmployeeName || sale.connectedBy,
+        dateTime: new Date(),
+        issueReason: sale.salesEmployeeRemark || sale.issues || 'Customer Upgrade Remote Support',
+        status: 'PENDING',
+      });
+    } else {
+      await CompanySalesService.assignVerificationEmployeeForSale(companyId, sale);
+    }
+
+    emitCompanyEvent('upgrade:created', upgrade);
+    emitCompanyEvent('verification:updated', sale);
+    return upgrade;
   }
 
   static async deleteSale(companyId: string, id: string) {
@@ -549,51 +610,7 @@ export class CompanySalesService {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const nextBDate = getBusinessDateString(tomorrow);
-    const hasTechSupport = data.needsTechSupport === 'yes' || data.needsTechSupport === true;
-
-    const upgrade = await Upgrade.create({
-      companyId,
-      customerId,
-      customerName: data.customerName || saleForUpgrade?.name || 'Customer',
-      customerEmail: data.customerEmail || saleForUpgrade?.customerEmail || '',
-      mobile: data.mobile || saleForUpgrade?.alternateContactNo || '',
-      country: data.country || saleForUpgrade?.country || '',
-      system: data.system || saleForUpgrade?.system || '',
-      salesEmployeeId: saleForUpgrade?.salesEmployeeId || validCurrentUserId,
-      salesEmployeeName: saleForUpgrade?.salesEmployeeName || currentUserName || 'Sales Employee',
-      upgradedBy: validCurrentUserId,
-      upgradedByName: currentUserName || 'Sales Employee',
-      originalSaleId: saleForUpgrade?._id,
-      upgradeNumber: existingUpgrades + 1,
-      upgradeAmount,
-      salesTaxType,
-      salesTaxValue,
-      salesTaxAmount,
-      finalAmount,
-      paymentMethod: data.paymentMethod || saleForUpgrade?.paymentMethod || 'Card',
-      salesEmployeeRemark: (data.salesEmployeeRemark || '').trim(),
-      status: 'PENDING',
-      techSupportStatus: hasTechSupport ? 'PENDING' : 'NONE',
-      verificationStatus: 'PENDING',
-      feedbackStatus: 'PENDING',
-    });
-
-    if (hasTechSupport) {
-      const rsTicket = await RemoteSupport.create({
-        companyId,
-        customerName: data.customerName || saleForUpgrade?.name || 'Customer',
-        customerContact: data.mobile || saleForUpgrade?.alternateContactNo || '',
-        country: data.country || saleForUpgrade?.country || '',
-        system: data.system || saleForUpgrade?.system || '',
-        otherDetails: `[Upgrade #${existingUpgrades + 1}] ${(data.salesEmployeeRemark || '').trim()}`,
-        salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
-        salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
-        dateTime: new Date(),
-        issueReason: (data.salesEmployeeRemark || '').trim() || 'Customer Upgrade Remote Support',
-        status: 'PENDING',
-      });
-      emitCompanyEvent('remote-support:created', rsTicket);
-    }
+    const hasTechSupport = data.needsTechSupport === 'yes';
 
     const upgradeSale = await Sale.create({
       companyId,
@@ -609,6 +626,7 @@ export class CompanySalesService {
       connectedBy: currentUserName || 'Sales Employee',
       customerType: 'UPGRADE',
       transactionType: 'UPGRADE',
+      needsTechSupport: hasTechSupport ? 'yes' : 'no',
       salesEmployeeId: validCurrentUserId || saleForUpgrade?.salesEmployeeId,
       salesEmployeeName: currentUserName || saleForUpgrade?.salesEmployeeName || 'Sales Employee',
       amount: upgradeAmount,
@@ -627,16 +645,8 @@ export class CompanySalesService {
       feedbackBusinessDate: nextBDate,
     });
 
-    await Upgrade.updateOne({ _id: upgrade._id }, { $set: { saleId: upgradeSale._id } });
-
-    if (!hasTechSupport) {
-      await CompanySalesService.assignVerificationEmployeeForSale(companyId, upgradeSale);
-    }
     emitCompanyEvent('sale:created', upgradeSale);
-    emitCompanyEvent('verification:updated', upgradeSale);
-    emitCompanyEvent('upgrade:created', { ...upgrade.toObject(), saleId: upgradeSale._id });
-
-    return upgrade;
+    return upgradeSale;
   }
 
   static async getUpgrades(companyId: string, role: string, employeeId: string, filters: { customerId?: string; status?: string; q?: string } = {}) {
@@ -754,7 +764,7 @@ export class CompanySalesService {
   }
 
   // Verification Methods
-  static async getVerifications(companyId: string, role: string, employeeId: string, filters: { status?: string } = {}) {
+  static async getVerifications(companyId: string, role: string, employeeId: string, filters: { status?: string; today?: boolean } = {}) {
     if (role === Roles.VERIFICATION) {
       const unassigned = await Sale.find({
         companyId,
@@ -776,6 +786,10 @@ export class CompanySalesService {
       failed: { $ne: true },
       $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
     };
+    if (filters.today) {
+      const { start, end } = getBusinessDayRange();
+      query.createdAt = { $gte: start, $lt: end };
+    }
     if (filters.status) query.verificationStatus = filters.status;
     if (role === Roles.VERIFICATION) {
       query.$or = [
@@ -852,7 +866,7 @@ export class CompanySalesService {
   }
 
   // Feedback Methods
-  static async getFeedbacks(companyId: string, role: string, employeeId: string, filters: { status?: string } = {}) {
+  static async getFeedbacks(companyId: string, role: string, employeeId: string, filters: { status?: string; today?: boolean } = {}) {
     const currentBDate = getBusinessDateString();
     const query: any = {
       companyId,
@@ -860,6 +874,10 @@ export class CompanySalesService {
       $or: [{ saleStatus: { $ne: 'DROPPED' } }, { saleStatus: { $exists: false } }, { saleStatus: null }],
       verificationStatus: 'SUCCESSFUL',
     };
+    if (filters.today) {
+      const { start, end } = getBusinessDayRange();
+      query.createdAt = { $gte: start, $lt: end };
+    }
 
     if (filters.status === 'PENDING') {
       query.feedbackStatus = 'PENDING';
@@ -931,10 +949,13 @@ export class CompanySalesService {
   // Today's Work Methods
   static async getTodaysWork(companyId: string, role: string, employeeId: string, employeeName: string) {
     const currentBDate = getBusinessDateString();
+    const { start: businessDayStart, end: businessDayEnd } = getBusinessDayRange(currentBDate);
+    const todayLeadFilter = { acceptedAt: { $gte: businessDayStart, $lte: businessDayEnd } };
 
     if (role === Roles.SALES) {
       const leads = await Lead.find({
         companyId,
+        ...todayLeadFilter,
         $or: [{ assignedTo: new Types.ObjectId(employeeId) }, { connectedBy: employeeName }],
       }).sort({ createdAt: -1 });
 
@@ -999,7 +1020,7 @@ export class CompanySalesService {
     }
 
     if (role === Roles.MANAGER || role === Roles.COMPANY_ADMIN) {
-      const leads = await Lead.find({ companyId }).sort({ createdAt: -1 });
+      const leads = await Lead.find({ companyId, ...todayLeadFilter }).sort({ createdAt: -1 });
       const sales = await Sale.find({ companyId, businessDate: currentBDate }).sort({ createdAt: -1 });
       const RemoteSupport = (await import('../models/RemoteSupport.js')).RemoteSupport;
       const tickets = await RemoteSupport.find({ companyId }).sort({ createdAt: -1 });

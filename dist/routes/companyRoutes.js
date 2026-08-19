@@ -22,6 +22,7 @@ const routePermissionMiddleware_1 = require("../middlewares/routePermissionMiddl
 const router = (0, express_1.Router)();
 router.post('/login', companyValidator_1.companyLoginValidation, companyAuthController_1.CompanyAuthController.login);
 router.post('/login/verify-otp', companyValidator_1.verifyLoginOtpValidation, companyAuthController_1.CompanyAuthController.verifyLoginOtp);
+router.get('/login-config', companySettingsController_1.CompanySettingsController.getLoginConfig);
 router.get('/validate', authMiddleware_1.authenticate, tenantMiddleware_1.enforceTenant, companyAuthController_1.CompanyAuthController.validateSession);
 router.use(authMiddleware_1.authenticate, tenantMiddleware_1.enforceTenant, companySettingsMiddleware_1.enforceEmployeeLoginEnabled);
 router.post('/logout', companyAuthController_1.CompanyAuthController.logout);

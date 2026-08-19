@@ -13,23 +13,28 @@ const MAX_ATTEMPTS = 5;
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 class OtpService {
     static async createAndSendLoginOtp(employeeId, companyId, email, name) {
+        const deliveryEmail = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim().toLowerCase();
+        if (!deliveryEmail) {
+            throw { statusCode: 500, message: 'SMTP sender email is not configured. Set SMTP_FROM or SMTP_USER in .env' };
+        }
         const otp = generateOtp();
         const otpToken = crypto_1.default.randomBytes(32).toString('hex');
         const otpHash = await bcrypt_1.default.hash(otp, 10);
         const expiryMinutes = Number(process.env.OTP_EXPIRY_MINUTES || 10);
         const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+        const safeName = (name || 'Employee').trim() || 'Employee';
         await LoginOtp_1.LoginOtp.deleteMany({ employeeId: new mongoose_1.Types.ObjectId(employeeId) });
         await LoginOtp_1.LoginOtp.create({
             otpToken,
             employeeId: new mongoose_1.Types.ObjectId(employeeId),
             companyId: new mongoose_1.Types.ObjectId(companyId),
             otpHash,
-            email: email.toLowerCase(),
+            email: deliveryEmail,
             expiresAt,
             attempts: 0,
         });
-        await (0, emailService_1.sendLoginOtpEmail)(email, otp, name);
-        return { otpToken, maskedEmail: (0, emailService_1.maskEmail)(email) };
+        await (0, emailService_1.sendLoginOtpEmail)(deliveryEmail, otp, safeName);
+        return { otpToken, maskedEmail: (0, emailService_1.maskEmail)(deliveryEmail) };
     }
     static async verifyLoginOtp(otpToken, otp) {
         const session = await LoginOtp_1.LoginOtp.findOne({ otpToken });

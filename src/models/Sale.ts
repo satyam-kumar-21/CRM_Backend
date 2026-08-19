@@ -19,6 +19,7 @@ export interface ISale extends Document {
   connectedBy: string;
   customerType?: 'NEW' | 'EXISTING_CUSTOMER' | 'UPGRADE';
   transactionType?: 'SALE' | 'UPGRADE';
+  needsTechSupport?: 'yes' | 'no';
   salesEmployeeId?: Types.ObjectId;
   salesEmployeeName?: string;
   techSupportEmployeeId?: Types.ObjectId;
@@ -86,6 +87,7 @@ const SaleSchema = new Schema<ISale>(
     connectedBy: { type: String, required: true, trim: true },
     customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
     transactionType: { type: String, enum: ['SALE', 'UPGRADE'], default: 'SALE' },
+    needsTechSupport: { type: String, enum: ['yes', 'no'], default: 'no' },
     salesEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },
     salesEmployeeName: { type: String, default: '', trim: true },
     techSupportEmployeeId: { type: Schema.Types.ObjectId, ref: 'Employee' },
@@ -137,5 +139,8 @@ const SaleSchema = new Schema<ISale>(
 );
 
 SaleSchema.plugin(tenantPlugin);
-SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, sparse: true });
+SaleSchema.index(
+  { companyId: 1, leadId: 1 },
+  { unique: true, partialFilterExpression: { leadId: { $type: 'objectId' } } }
+);
 export const Sale = model<ISale>('Sale', SaleSchema);

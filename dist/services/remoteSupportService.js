@@ -7,6 +7,7 @@ const Lead_1 = require("../models/Lead");
 const Employee_1 = require("../models/Employee");
 const index_1 = require("../constants/index");
 const socket_1 = require("../realtime/socket");
+const businessDate_1 = require("../utils/businessDate");
 class RemoteSupportService {
     static async list(companyId, role, employeeId, filters = {}) {
         const query = { companyId };
@@ -42,11 +43,21 @@ class RemoteSupportService {
             query.leadId = new mongoose_1.Types.ObjectId(filters.leadId);
         if (filters.failedReason)
             query.failedReason = new RegExp(filters.failedReason, 'i');
+        if (filters.today === 'true') {
+            const { start, end } = (0, businessDate_1.getBusinessDayRange)();
+            query.dateTime = { ...query.dateTime, $gte: start, $lt: end };
+        }
         if (filters.fromDate)
             query.dateTime = { ...query.dateTime, $gte: new Date(filters.fromDate) };
         if (filters.toDate)
             query.dateTime = { ...query.dateTime, $lt: new Date(filters.toDate) };
-        return RemoteSupport_1.RemoteSupport.find(query).sort({ dateTime: -1, createdAt: -1 });
+        const records = await RemoteSupport_1.RemoteSupport.find(query).populate('salesEmployeeId', 'name employeeId').sort({ dateTime: -1, createdAt: -1 });
+        return records.map((record) => {
+            if (!record.salesEmployeeName && record.salesEmployeeId?.name) {
+                record.salesEmployeeName = record.salesEmployeeId.name;
+            }
+            return record;
+        });
     }
     static async create(companyId, data) {
         const salesEmployee = await Employee_1.Employee.findOne({ companyId, _id: data.salesEmployeeId, isSuspended: false });
@@ -68,7 +79,7 @@ class RemoteSupportService {
             system: data.system || '',
             otherDetails: data.otherDetails || '',
             salesEmployeeId: new mongoose_1.Types.ObjectId(data.salesEmployeeId),
-            salesEmployeeName: data.salesEmployeeName,
+            salesEmployeeName: salesEmployee.name,
             techSupportEmployeeId: techEmployee ? techEmployee._id : undefined,
             techSupportEmployeeName: techEmployee ? techEmployee.name : data.techSupportEmployeeName || '',
             dateTime: data.dateTime,

@@ -117,7 +117,8 @@ class CompanySalesController {
     static async getVerifications(req, res, next) {
         try {
             const status = req.query.status;
-            responseHandler_1.ApiResponse.success(res, 'Verifications fetched successfully', await companySalesService_1.CompanySalesService.getVerifications(req.user.companyId, req.user.role, req.user.id, { status }));
+            const today = req.query.today === 'true';
+            responseHandler_1.ApiResponse.success(res, 'Verifications fetched successfully', await companySalesService_1.CompanySalesService.getVerifications(req.user.companyId, req.user.role, req.user.id, { status, today }));
         }
         catch (error) {
             next(error);
@@ -177,7 +178,8 @@ class CompanySalesController {
     static async getFeedbacks(req, res, next) {
         try {
             const status = req.query.status;
-            responseHandler_1.ApiResponse.success(res, 'Feedbacks fetched successfully', await companySalesService_1.CompanySalesService.getFeedbacks(req.user.companyId, req.user.role, req.user.id, { status }));
+            const today = req.query.today === 'true';
+            responseHandler_1.ApiResponse.success(res, 'Feedbacks fetched successfully', await companySalesService_1.CompanySalesService.getFeedbacks(req.user.companyId, req.user.role, req.user.id, { status, today }));
         }
         catch (error) {
             next(error);

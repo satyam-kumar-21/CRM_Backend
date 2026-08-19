@@ -18,6 +18,7 @@ const SaleSchema = new mongoose_1.Schema({
     connectedBy: { type: String, required: true, trim: true },
     customerType: { type: String, enum: ['NEW', 'EXISTING_CUSTOMER', 'UPGRADE'], default: 'NEW' },
     transactionType: { type: String, enum: ['SALE', 'UPGRADE'], default: 'SALE' },
+    needsTechSupport: { type: String, enum: ['yes', 'no'], default: 'no' },
     salesEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' },
     salesEmployeeName: { type: String, default: '', trim: true },
     techSupportEmployeeId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' },
@@ -64,5 +65,5 @@ const SaleSchema = new mongoose_1.Schema({
     feedbackPendingReason: { type: String, default: '' },
 }, { timestamps: true });
 SaleSchema.plugin(tenantPlugin_1.tenantPlugin);
-SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, sparse: true });
+SaleSchema.index({ companyId: 1, leadId: 1 }, { unique: true, partialFilterExpression: { leadId: { $type: 'objectId' } } });
 exports.Sale = (0, mongoose_1.model)('Sale', SaleSchema);

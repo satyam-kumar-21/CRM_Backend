@@ -8,7 +8,7 @@ const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
-const rateLimiter_1 = require("./middlewares/rateLimiter");
+// import { apiRateLimiter } from './middlewares/rateLimiter';
 const errorMiddleware_1 = require("./middlewares/errorMiddleware");
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const app = (0, express_1.default)();
@@ -34,7 +34,7 @@ app.use((0, morgan_1.default)('dev'));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use((0, cookie_parser_1.default)());
-app.use('/api', rateLimiter_1.apiRateLimiter);
+// app.use('/api', apiRateLimiter);
 app.use('/api/v1/company', companyRoutes_1.default);
 // Health Check Endpoint
 app.get('/health', (req, res) => {

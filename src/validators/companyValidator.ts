@@ -102,7 +102,7 @@ export const updateLeadValidation = [
   body('techSupportStatus').optional().isIn(['NONE', 'PENDING', 'ACCEPTED', 'SUCCESSFUL', 'FAILED']).withMessage('Invalid tech support status'),
   body('status').optional().isIn(['OPEN', 'COMPLETED']).withMessage('Invalid lead status'),
   body('paymentConfirmed').optional().isIn(['yes', 'no']).withMessage('Payment confirmed must be yes or no'),
-  body('finalStatus').optional().isIn(['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED']).withMessage('Invalid final status'),
+  body('finalStatus').optional().isIn(['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED', 'NOT_SALE']).withMessage('Invalid final status'),
 ];
 
 export const saleValidation = [

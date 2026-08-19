@@ -96,7 +96,7 @@ exports.updateLeadValidation = [
     (0, express_validator_1.body)('techSupportStatus').optional().isIn(['NONE', 'PENDING', 'ACCEPTED', 'SUCCESSFUL', 'FAILED']).withMessage('Invalid tech support status'),
     (0, express_validator_1.body)('status').optional().isIn(['OPEN', 'COMPLETED']).withMessage('Invalid lead status'),
     (0, express_validator_1.body)('paymentConfirmed').optional().isIn(['yes', 'no']).withMessage('Payment confirmed must be yes or no'),
-    (0, express_validator_1.body)('finalStatus').optional().isIn(['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED']).withMessage('Invalid final status'),
+    (0, express_validator_1.body)('finalStatus').optional().isIn(['PENDING_PAYMENT', 'CLOSED', 'PAYMENT_FAILED', 'NOT_SALE']).withMessage('Invalid final status'),
 ];
 exports.saleValidation = [
     (0, express_validator_1.body)('name').trim().notEmpty().withMessage('Customer name is required'),

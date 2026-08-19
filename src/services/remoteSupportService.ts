@@ -4,6 +4,7 @@ import { Lead } from '../models/Lead';
 import { Employee } from '../models/Employee';
 import { Roles } from '../constants/index';
 import { emitCompanyEvent } from '../realtime/socket';
+import { getBusinessDayRange } from '../utils/businessDate';
 
 export class RemoteSupportService {
   static async list(companyId: string, role: Roles, employeeId: string, filters: Record<string, any> = {}) {
@@ -36,10 +37,20 @@ export class RemoteSupportService {
     if (filters.techSupportEmployeeName) query.techSupportEmployeeName = new RegExp(filters.techSupportEmployeeName, 'i');
     if (filters.leadId && Types.ObjectId.isValid(filters.leadId)) query.leadId = new Types.ObjectId(filters.leadId);
     if (filters.failedReason) query.failedReason = new RegExp(filters.failedReason, 'i');
+    if (filters.today === 'true') {
+      const { start, end } = getBusinessDayRange();
+      query.dateTime = { ...query.dateTime, $gte: start, $lt: end };
+    }
     if (filters.fromDate) query.dateTime = { ...query.dateTime, $gte: new Date(filters.fromDate) };
     if (filters.toDate) query.dateTime = { ...query.dateTime, $lt: new Date(filters.toDate) };
 
-    return RemoteSupport.find(query).sort({ dateTime: -1, createdAt: -1 });
+    const records = await RemoteSupport.find(query).populate('salesEmployeeId', 'name employeeId').sort({ dateTime: -1, createdAt: -1 });
+    return records.map((record: any) => {
+      if (!record.salesEmployeeName && record.salesEmployeeId?.name) {
+        record.salesEmployeeName = record.salesEmployeeId.name;
+      }
+      return record;
+    });
   }
 
   static async create(companyId: string, data: {
@@ -79,7 +90,7 @@ export class RemoteSupportService {
       system: data.system || '',
       otherDetails: data.otherDetails || '',
       salesEmployeeId: new Types.ObjectId(data.salesEmployeeId),
-      salesEmployeeName: data.salesEmployeeName,
+      salesEmployeeName: salesEmployee.name,
       techSupportEmployeeId: techEmployee ? techEmployee._id : undefined,
       techSupportEmployeeName: techEmployee ? techEmployee.name : data.techSupportEmployeeName || '',
       dateTime: data.dateTime,

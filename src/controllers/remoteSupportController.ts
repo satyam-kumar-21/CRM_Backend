@@ -8,7 +8,7 @@ import { emitCompanyEvent, emitUserEvent } from '../realtime/socket';
 export class RemoteSupportController {
   static async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const filterKeys = ['status', 'customerName', 'salesEmployeeName', 'techSupportEmployeeName', 'fromDate', 'toDate', 'failedReason', 'leadId'];
+      const filterKeys = ['status', 'customerName', 'salesEmployeeName', 'techSupportEmployeeName', 'fromDate', 'toDate', 'today', 'failedReason', 'leadId'];
       const filters: Record<string, any> = {};
       for (const key of filterKeys) {
         if (req.query[key]) filters[key] = String(req.query[key]);

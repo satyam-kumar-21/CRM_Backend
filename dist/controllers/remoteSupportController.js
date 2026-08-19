@@ -8,7 +8,7 @@ const socket_1 = require("../realtime/socket");
 class RemoteSupportController {
     static async list(req, res, next) {
         try {
-            const filterKeys = ['status', 'customerName', 'salesEmployeeName', 'techSupportEmployeeName', 'fromDate', 'toDate', 'failedReason', 'leadId'];
+            const filterKeys = ['status', 'customerName', 'salesEmployeeName', 'techSupportEmployeeName', 'fromDate', 'toDate', 'today', 'failedReason', 'leadId'];
             const filters = {};
             for (const key of filterKeys) {
                 if (req.query[key])
