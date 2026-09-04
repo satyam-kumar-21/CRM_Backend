@@ -66,7 +66,13 @@ class AnnouncementController {
                     link: '/company-admin/dashboard?section=announcements',
                     type: 'announcement',
                 });
+                (0, socket_1.emitUserEvent)(recipientIds, 'announcement:created', {
+                    title: title.trim(),
+                    content: content.trim(),
+                    announcement,
+                });
             }
+            (0, socket_1.emitCompanyEvent)('announcement:created', { title: title.trim(), content: content.trim(), announcement });
             responseHandler_1.ApiResponse.success(res, 'Announcement created successfully', announcement, 201);
         }
         catch (error) {

@@ -5,7 +5,7 @@ import { Announcement } from '../models/Announcement';
 import { Notification } from '../models/Notification';
 import { Employee } from '../models/Employee';
 import { Roles } from '../constants/index';
-import { emitUserEvent } from '../realtime/socket';
+import { emitUserEvent, emitCompanyEvent } from '../realtime/socket';
 
 export class AnnouncementController {
   static async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -74,7 +74,13 @@ export class AnnouncementController {
           link: '/company-admin/dashboard?section=announcements',
           type: 'announcement',
         });
+        emitUserEvent(recipientIds, 'announcement:created', {
+          title: title.trim(),
+          content: content.trim(),
+          announcement,
+        });
       }
+      emitCompanyEvent('announcement:created', { title: title.trim(), content: content.trim(), announcement });
 
       ApiResponse.success(res, 'Announcement created successfully', announcement, 201);
     } catch (error) {

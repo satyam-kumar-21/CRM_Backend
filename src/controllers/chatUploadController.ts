@@ -116,8 +116,9 @@ export const chatUpload = [
 
       const realtimeMessage = await CompanyAuthService.getRealtimeMessage(req.user.companyId!, req.user.id, message._id.toString());
       const audience = await CompanyAuthService.getConversationAudience(req.user.companyId!, conversationId);
+      const recipientConversationId = message.groupId ? message.groupId.toString() : userId;
       emitUserEvent([userId], 'message:new', { ...realtimeMessage, isMine: true, conversationId });
-      emitUserEvent(audience.filter((id) => id !== userId), 'message:new', { ...realtimeMessage, isMine: false, conversationId });
+      emitUserEvent(audience.filter((id) => id !== userId), 'message:new', { ...realtimeMessage, isMine: false, conversationId: recipientConversationId });
 
       ApiResponse.success(res, 'Attachment uploaded successfully.', message, 201);
     } catch (error) {

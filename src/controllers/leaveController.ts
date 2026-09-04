@@ -6,7 +6,7 @@ import { Notification } from '../models/Notification';
 import { Employee } from '../models/Employee';
 import { LeaveStatus, Roles } from '../constants/index';
 import { getBusinessMonthRange } from '../utils/businessDate';
-import { emitUserEvent } from '../realtime/socket';
+import { emitUserEvent, emitCompanyEvent } from '../realtime/socket';
 
 export class LeaveController {
   static async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -119,6 +119,7 @@ export class LeaveController {
         link: '/employee/dashboard?section=leave',
       });
       emitUserEvent([req.user!.id], 'notification:new', { ...notificationPayload, type: 'leave_submitted' });
+      emitCompanyEvent('leave:updated', { leave });
 
       ApiResponse.success(res, 'Leave request created successfully', leave, 201);
     } catch (error) {
@@ -184,6 +185,7 @@ export class LeaveController {
         message,
         type: 'leave_update',
       });
+      emitCompanyEvent('leave:updated', { leave: updatedLeave });
 
       ApiResponse.success(res, 'Leave status updated successfully', updatedLeave);
     } catch (error) {

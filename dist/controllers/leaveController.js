@@ -114,6 +114,7 @@ class LeaveController {
                 link: '/employee/dashboard?section=leave',
             });
             (0, socket_1.emitUserEvent)([req.user.id], 'notification:new', { ...notificationPayload, type: 'leave_submitted' });
+            (0, socket_1.emitCompanyEvent)('leave:updated', { leave });
             responseHandler_1.ApiResponse.success(res, 'Leave request created successfully', leave, 201);
         }
         catch (error) {
@@ -174,6 +175,7 @@ class LeaveController {
                 message,
                 type: 'leave_update',
             });
+            (0, socket_1.emitCompanyEvent)('leave:updated', { leave: updatedLeave });
             responseHandler_1.ApiResponse.success(res, 'Leave status updated successfully', updatedLeave);
         }
         catch (error) {

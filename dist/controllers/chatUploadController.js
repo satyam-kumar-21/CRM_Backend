@@ -97,8 +97,9 @@ exports.chatUpload = [
             });
             const realtimeMessage = await companyAuthService_1.CompanyAuthService.getRealtimeMessage(req.user.companyId, req.user.id, message._id.toString());
             const audience = await companyAuthService_1.CompanyAuthService.getConversationAudience(req.user.companyId, conversationId);
+            const recipientConversationId = message.groupId ? message.groupId.toString() : userId;
             (0, socket_1.emitUserEvent)([userId], 'message:new', { ...realtimeMessage, isMine: true, conversationId });
-            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== userId), 'message:new', { ...realtimeMessage, isMine: false, conversationId });
+            (0, socket_1.emitUserEvent)(audience.filter((id) => id !== userId), 'message:new', { ...realtimeMessage, isMine: false, conversationId: recipientConversationId });
             responseHandler_1.ApiResponse.success(res, 'Attachment uploaded successfully.', message, 201);
         }
         catch (error) {

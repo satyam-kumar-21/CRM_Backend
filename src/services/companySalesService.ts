@@ -9,6 +9,19 @@ import { getBusinessDateString, getBusinessDayRange } from '../utils/businessDat
 import { emitCompanyEvent } from '../realtime/socket';
 import { Types } from 'mongoose';
 
+const maskCustomerField = (value?: string | null) => {
+  if (!value) return value;
+  const str = value.trim();
+  if (!str || str === '—' || str.toLowerCase() === 'n/a') return str;
+  if (str.length <= 4) {
+    return `${str.slice(0, 1)}***${str.length > 1 ? str.slice(-1) : ''}`;
+  }
+  const start = str.slice(0, 2);
+  const end = str.slice(-2);
+  const hidden = '*'.repeat(Math.min(8, Math.max(4, str.length - 4)));
+  return `${start}${hidden}${end}`;
+};
+
 type LeadInput = Omit<Partial<ILead>, 'companyId'> & {
   name: string;
   country: string;
@@ -317,8 +330,9 @@ export class CompanySalesService {
     const employee = await Employee.findOne({ companyId, _id: employeeId }).select('name employeeId teamId');
     if (!employee) return [];
 
+    let salesDocs: any[] = [];
     if (role === Roles.SALES) {
-      return Sale.find({
+      salesDocs = await Sale.find({
         companyId,
         ...statusQuery,
         $or: [
@@ -326,24 +340,34 @@ export class CompanySalesService {
           { connectedBy: employee.name },
           { connectedBy: employee.employeeId },
         ],
-      }).sort({ createdAt: -1 });
-    }
-
-    if (role === Roles.MANAGER && employee.teamId) {
+      }).sort({ createdAt: -1 }).lean();
+    } else if (role === Roles.MANAGER && employee.teamId) {
       const teamEmployees = await Employee.find({ companyId, teamId: employee.teamId }).select('_id name employeeId');
       const teamIds = teamEmployees.map((e) => e._id);
       const teamNames = teamEmployees.map((e) => e.name);
-      return Sale.find({
+      salesDocs = await Sale.find({
         companyId,
         ...statusQuery,
         $or: [
           { salesEmployeeId: { $in: teamIds } },
           { connectedBy: { $in: teamNames } },
         ],
-      }).sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 }).lean();
+    } else {
+      salesDocs = await Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 }).lean();
     }
 
-    return Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 });
+    if (!pending) {
+      return salesDocs.map((s: any) => ({
+        ...s,
+        name: maskCustomerField(s.name) || s.name,
+        customerEmail: maskCustomerField(s.customerEmail),
+        alternateContactNo: maskCustomerField(s.alternateContactNo),
+        customerAddress: maskCustomerField(s.customerAddress),
+      }));
+    }
+
+    return salesDocs;
   }
 
   static async createSale(companyId: string, data: SaleInput, currentUserId?: string, currentUserName?: string) {
@@ -582,17 +606,30 @@ export class CompanySalesService {
 
   static async searchCustomers(companyId: string, role: string, employeeId: string, q: string) {
     const search = (q || '').trim();
+    let sales: any[] = [];
     if (!search) {
       if (role === Roles.SALES && employeeId && Types.ObjectId.isValid(employeeId)) {
-        return Sale.find({ companyId, salesEmployeeId: new Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50);
+        sales = await Sale.find({ companyId, salesEmployeeId: new Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50).lean();
+      } else {
+        sales = await Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50).lean();
       }
-      return Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
+    } else {
+      const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
+      if (!searchFilters.length) return [];
+      sales = await Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100).lean();
     }
 
-    const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
-    if (!searchFilters.length) return [];
+    const seen = new Set<string>();
+    const uniqueCustomers: any[] = [];
+    for (const sale of sales) {
+      const key = (sale.customerId || String(sale._id)).toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueCustomers.push(sale);
+      }
+    }
 
-    return Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100);
+    return uniqueCustomers;
   }
 
   static async createUpgrade(companyId: string, data: Partial<SaleInput> & { customerId?: string; upgradeAmount?: number; salesTaxType?: 'PERCENTAGE' | 'DIRECT_AMOUNT'; salesTaxValue?: number; salesTaxAmount?: number; finalAmount?: number; paymentMethod?: ISale['paymentMethod']; salesEmployeeRemark?: string; upgradedBy?: string; customerName?: string; customerEmail?: string; mobile?: string; country?: string; system?: string; needsTechSupport?: 'yes' | 'no' | boolean; }, currentUserId?: string, currentUserName?: string) {
@@ -686,7 +723,17 @@ export class CompanySalesService {
       query.$and = andConditions;
     }
 
-    return Upgrade.find(query).sort({ createdAt: -1 });
+    const upgrades = await Upgrade.find(query).sort({ createdAt: -1 }).lean();
+    if (role !== Roles.COMPANY_ADMIN) {
+      return upgrades.map((u: any) => ({
+        ...u,
+        customerName: maskCustomerField(u.customerName) || u.customerName,
+        customerEmail: maskCustomerField(u.customerEmail),
+        mobile: maskCustomerField(u.mobile),
+      }));
+    }
+
+    return upgrades;
   }
 
   static async createVerification(companyId: string, data: Partial<SaleInput>, currentUserId?: string) {

@@ -280,7 +280,7 @@ export class CompanyAuthController {
       const realtimeMessage = await CompanyAuthService.getRealtimeMessage(req.user!.companyId!, req.user!.id, message._id.toString());
       const audience = await CompanyAuthService.getConversationAudience(req.user!.companyId!, req.params.conversationId);
       emitUserEvent([req.user!.id], 'message:new', { ...realtimeMessage, isMine: true, conversationId: req.params.conversationId });
-      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.params.conversationId });
+      emitUserEvent(audience.filter((id) => id !== req.user!.id), 'message:new', { ...realtimeMessage, isMine: false, conversationId: req.user!.id });
       ApiResponse.success(res, 'Message posted successfully', message, 201);
     } catch (error) { next(error); }
   }
