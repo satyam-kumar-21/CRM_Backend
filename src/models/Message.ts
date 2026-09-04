@@ -16,6 +16,9 @@ export interface IMessage extends Document {
   objectKey?: string;
   fileSize?: number;
   duration?: number;
+  deletedFor: Schema.Types.ObjectId[];
+  deletedForEveryone?: boolean;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   editedAt?: Date;
@@ -34,6 +37,9 @@ const MessageSchema = new Schema<IMessage>(
     objectKey: { type: String, trim: true },
     fileSize: { type: Number },
     duration: { type: Number },
+    deletedFor: [{ type: Schema.Types.ObjectId, ref: 'Employee' }],
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedAt: { type: Date },
     editedAt: { type: Date },
   },
   { timestamps: true }

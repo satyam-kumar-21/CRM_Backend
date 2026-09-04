@@ -302,9 +302,12 @@ export class CompanyAuthController {
 
   static async deleteMessage(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const result = await CompanyAuthService.deleteMessage(req.user!.companyId!, req.user!.id, req.params.messageId);
-      if (result.groupId) emitConversationEvent(result.groupId, 'message:deleted', result);
-      else emitDirectEvent([result.senderId, result.recipientId].filter(Boolean) as string[], 'message:deleted', result);
+      const deleteFor = req.body?.deleteFor === 'ME' ? 'ME' : 'EVERYONE';
+      const result = await CompanyAuthService.deleteMessage(req.user!.companyId!, req.user!.id, req.params.messageId, deleteFor);
+      if (result.deleteFor === 'EVERYONE') {
+        if (result.groupId) emitConversationEvent(result.groupId, 'message:deleted', result);
+        else emitDirectEvent([result.senderId, result.recipientId].filter(Boolean) as string[], 'message:deleted', result);
+      }
       ApiResponse.success(res, 'Message deleted successfully', result);
     } catch (error) { next(error); }
   }
