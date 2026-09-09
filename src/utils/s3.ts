@@ -1,47 +1,68 @@
-import { randomUUID } from 'crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand, GetObjectCommandOutput } from '@aws-sdk/client-s3';
-import { getSignedUrl as getAwsSignedUrl } from '@aws-sdk/s3-request-presigner';
+import fs from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
-const bucketName = process.env.AWS_S3_BUCKET_NAME;
-const region = process.env.AWS_REGION;
-const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+const uploadRoot = path.resolve(process.cwd(), 'uploads');
 
-if (!bucketName || !region || !accessKeyId || !secretAccessKey) {
-  throw new Error('AWS S3 configuration is required. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET_NAME in environment.');
-}
+const defaultMimeType = 'application/octet-stream';
+const mimeByExtension: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.webm': 'audio/webm',
+  '.ogg': 'audio/ogg',
+  '.mp4': 'audio/mp4',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.csv': 'text/csv',
+  '.txt': 'text/plain',
+  '.zip': 'application/zip',
+};
 
-const s3Client = new S3Client({
-  region,
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
-});
+const ensureUploadDirectory = (targetPath: string) => {
+  fs.mkdirSync(targetPath, { recursive: true });
+};
 
 export const uploadChatAttachment = async (companyId: string, conversationId: string, category: 'images' | 'files' | 'audio', fileBuffer: Buffer, fileName: string, contentType: string) => {
   const extensionMatch = fileName.match(/\.[^\.]+$/);
-  const extension = extensionMatch ? extensionMatch[0] : '';
+  const extension = extensionMatch ? extensionMatch[0].toLowerCase() : '';
   const objectKey = `chat/${companyId}/${conversationId}/${category}/${randomUUID()}${extension}`;
+  const fullPath = path.join(uploadRoot, objectKey.replace(/\//g, path.sep));
 
-  await s3Client.send(new PutObjectCommand({
-    Bucket: bucketName,
-    Key: objectKey,
-    Body: fileBuffer,
-    ContentType: contentType,
-    ACL: 'private',
-  }));
+  ensureUploadDirectory(path.dirname(fullPath));
+  fs.writeFileSync(fullPath, fileBuffer);
 
-  return { objectKey, bucketName, contentType, fileSize: fileBuffer.length };
+  return { objectKey, bucketName: uploadRoot, contentType: contentType || mimeByExtension[extension] || defaultMimeType, fileSize: fileBuffer.length };
 };
 
-export const getChatAttachmentUrl = async (objectKey: string) => {
-  const command = new GetObjectCommand({ Bucket: bucketName, Key: objectKey });
-  return getAwsSignedUrl(s3Client, command, { expiresIn: 60 * 60 });
+export const getChatAttachmentUrl = async (objectKey: string, req?: { protocol?: string; get?: (header: string) => string | undefined }) => {
+  const host = req?.get ? req.get('host') : undefined;
+  const protocol = req?.protocol || process.env.APP_PROTOCOL || 'http';
+  const baseUrl = process.env.APP_URL || (host ? `${protocol}://${host}` : 'http://localhost:5000');
+  return `${baseUrl.replace(/\/$/, '')}/uploads/${objectKey.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 };
 
 export const downloadChatAttachment = async (objectKey: string) => {
-  const command = new GetObjectCommand({ Bucket: bucketName, Key: objectKey });
-  const response = await s3Client.send(command);
-  return response as GetObjectCommandOutput;
+  const safeObjectKey = objectKey.replace(/\\/g, '/');
+  const fullPath = path.join(uploadRoot, safeObjectKey.replace(/^\/+/, ''));
+
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+    throw new Error('Attachment not found.');
+  }
+
+  const fileBuffer = fs.readFileSync(fullPath);
+  const extension = path.extname(fullPath).toLowerCase();
+
+  return {
+    Body: fileBuffer,
+    ContentType: mimeByExtension[extension] || defaultMimeType,
+    ContentLength: fileBuffer.length,
+  };
 };

@@ -703,7 +703,7 @@ class CompanyAuthService {
             if (role !== index_1.Roles.COMPANY_ADMIN && group.privacy === 'private' && !group.members.some((memberId) => memberId.toString() === userId.toString()) && group.createdBy.toString() !== userId.toString()) {
                 throw { statusCode: 403, message: 'Access denied to private group.' };
             }
-            const messages = await Message_1.Message.find({ companyId, groupId: conversationId }).populate('senderId', 'name').sort({ createdAt: 1 });
+            const messages = await Message_1.Message.find({ companyId, groupId: conversationId, deletedFor: { $ne: userId } }).populate('senderId', 'name').sort({ createdAt: 1 });
             return messages.map((message) => messageWithSender(message, userId));
         }
         if (!isObjectId)
@@ -717,6 +717,7 @@ class CompanyAuthService {
                 { senderId: userId, recipientId: conversationId },
                 { senderId: conversationId, recipientId: userId },
             ],
+            deletedFor: { $ne: userId },
         }).populate('senderId', 'name').sort({ createdAt: 1 });
         return messages.map((message) => messageWithSender(message, userId));
     }
@@ -740,6 +741,8 @@ class CompanyAuthService {
         const message = await Message_1.Message.findOne({ companyId, _id: messageId });
         if (!message)
             throw { statusCode: 404, message: 'Message not found.' };
+        if (message.deletedForEveryone)
+            throw { statusCode: 400, message: 'Deleted messages cannot be edited.' };
         const ownsMessage = message.senderId.toString() === userId;
         const conversationId = message.groupId?.toString() || (message.senderId.toString() === userId ? message.recipientId?.toString() : message.senderId.toString());
         const isWorkflowUpdate = (() => { try {
@@ -754,11 +757,26 @@ class CompanyAuthService {
         const updated = await Message_1.Message.findOneAndUpdate({ _id: messageId, companyId }, { content, editedAt: new Date() }, { new: true, runValidators: true });
         return { ...updated.toObject(), isMine: updated.senderId.toString() === userId };
     }
-    static async deleteMessage(companyId, userId, messageId) {
-        const message = await Message_1.Message.findOneAndDelete({ companyId, _id: messageId, senderId: userId });
+    static async deleteMessage(companyId, userId, messageId, deleteFor = 'EVERYONE') {
+        const message = await Message_1.Message.findOne({ companyId, _id: messageId });
         if (!message)
+            throw { statusCode: 404, message: 'Message not found.' };
+        const groupId = message.groupId?.toString();
+        const recipientId = message.recipientId?.toString();
+        const senderId = message.senderId.toString();
+        if (deleteFor === 'EVERYONE' && senderId !== userId) {
             throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
-        return { id: messageId, groupId: message.groupId?.toString(), senderId: message.senderId.toString(), recipientId: message.recipientId?.toString() };
+        }
+        if (deleteFor === 'ME') {
+            if (senderId !== userId)
+                throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
+            await Message_1.Message.updateOne({ _id: messageId, companyId }, { $addToSet: { deletedFor: userId } });
+            return { id: messageId, deleteFor, groupId, senderId, recipientId };
+        }
+        const updated = await Message_1.Message.findOneAndUpdate({ _id: messageId, companyId, senderId: userId }, { content: '', deletedForEveryone: true, deletedAt: new Date(), editedAt: undefined }, { new: true });
+        if (!updated)
+            throw { statusCode: 404, message: 'Message not found or you are not the owner.' };
+        return { id: messageId, deleteFor, groupId, senderId, recipientId, deletedForEveryone: true };
     }
 }
 exports.CompanyAuthService = CompanyAuthService;

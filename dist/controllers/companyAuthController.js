@@ -288,11 +288,14 @@ class CompanyAuthController {
     }
     static async deleteMessage(req, res, next) {
         try {
-            const result = await companyAuthService_1.CompanyAuthService.deleteMessage(req.user.companyId, req.user.id, req.params.messageId);
-            if (result.groupId)
-                (0, socket_1.emitConversationEvent)(result.groupId, 'message:deleted', result);
-            else
-                (0, socket_1.emitDirectEvent)([result.senderId, result.recipientId].filter(Boolean), 'message:deleted', result);
+            const deleteFor = req.body?.deleteFor === 'ME' ? 'ME' : 'EVERYONE';
+            const result = await companyAuthService_1.CompanyAuthService.deleteMessage(req.user.companyId, req.user.id, req.params.messageId, deleteFor);
+            if (result.deleteFor === 'EVERYONE') {
+                if (result.groupId)
+                    (0, socket_1.emitConversationEvent)(result.groupId, 'message:deleted', result);
+                else
+                    (0, socket_1.emitDirectEvent)([result.senderId, result.recipientId].filter(Boolean), 'message:deleted', result);
+            }
             responseHandler_1.ApiResponse.success(res, 'Message deleted successfully', result);
         }
         catch (error) {

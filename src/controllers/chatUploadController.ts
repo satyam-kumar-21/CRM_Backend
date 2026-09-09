@@ -157,7 +157,7 @@ export const fetchAttachmentUrl = async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const url = await getChatAttachmentUrl(message.objectKey);
+    const url = await getChatAttachmentUrl(message.objectKey, req);
     ApiResponse.success(res, 'Attachment URL fetched.', { url });
   } catch (error) {
     next(error);

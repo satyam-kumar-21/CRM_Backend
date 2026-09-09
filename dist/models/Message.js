@@ -15,6 +15,9 @@ const MessageSchema = new mongoose_1.Schema({
     objectKey: { type: String, trim: true },
     fileSize: { type: Number },
     duration: { type: Number },
+    deletedFor: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'Employee' }],
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedAt: { type: Date },
     editedAt: { type: Date },
 }, { timestamps: true });
 MessageSchema.plugin(tenantPlugin_1.tenantPlugin);

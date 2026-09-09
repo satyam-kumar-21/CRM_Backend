@@ -132,7 +132,7 @@ const fetchAttachmentUrl = async (req, res, next) => {
             res.status(404).json({ success: false, message: 'Attachment not found in this conversation.' });
             return;
         }
-        const url = await (0, s3_1.getChatAttachmentUrl)(message.objectKey);
+        const url = await (0, s3_1.getChatAttachmentUrl)(message.objectKey, req);
         responseHandler_1.ApiResponse.success(res, 'Attachment URL fetched.', { url });
     }
     catch (error) {

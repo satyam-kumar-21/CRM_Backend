@@ -11,6 +11,20 @@ const index_1 = require("../constants/index");
 const businessDate_1 = require("../utils/businessDate");
 const socket_1 = require("../realtime/socket");
 const mongoose_1 = require("mongoose");
+const maskCustomerField = (value) => {
+    if (!value)
+        return value;
+    const str = value.trim();
+    if (!str || str === '—' || str.toLowerCase() === 'n/a')
+        return str;
+    if (str.length <= 4) {
+        return `${str.slice(0, 1)}***${str.length > 1 ? str.slice(-1) : ''}`;
+    }
+    const start = str.slice(0, 2);
+    const end = str.slice(-2);
+    const hidden = '*'.repeat(Math.min(8, Math.max(4, str.length - 4)));
+    return `${start}${hidden}${end}`;
+};
 class CompanySalesService {
     static async assignVerificationEmployeeIfMissing(companyId, saleId, employeeId, employeeName) {
         const sale = await Sale_1.Sale.findOne({ companyId, _id: saleId, failed: { $ne: true } });
@@ -228,8 +242,9 @@ class CompanySalesService {
         const employee = await Employee_1.Employee.findOne({ companyId, _id: employeeId }).select('name employeeId teamId');
         if (!employee)
             return [];
+        let salesDocs = [];
         if (role === index_1.Roles.SALES) {
-            return Sale_1.Sale.find({
+            salesDocs = await Sale_1.Sale.find({
                 companyId,
                 ...statusQuery,
                 $or: [
@@ -237,22 +252,34 @@ class CompanySalesService {
                     { connectedBy: employee.name },
                     { connectedBy: employee.employeeId },
                 ],
-            }).sort({ createdAt: -1 });
+            }).sort({ createdAt: -1 }).lean();
         }
-        if (role === index_1.Roles.MANAGER && employee.teamId) {
+        else if (role === index_1.Roles.MANAGER && employee.teamId) {
             const teamEmployees = await Employee_1.Employee.find({ companyId, teamId: employee.teamId }).select('_id name employeeId');
             const teamIds = teamEmployees.map((e) => e._id);
             const teamNames = teamEmployees.map((e) => e.name);
-            return Sale_1.Sale.find({
+            salesDocs = await Sale_1.Sale.find({
                 companyId,
                 ...statusQuery,
                 $or: [
                     { salesEmployeeId: { $in: teamIds } },
                     { connectedBy: { $in: teamNames } },
                 ],
-            }).sort({ createdAt: -1 });
+            }).sort({ createdAt: -1 }).lean();
         }
-        return Sale_1.Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 });
+        else {
+            salesDocs = await Sale_1.Sale.find({ companyId, ...statusQuery }).sort({ createdAt: -1 }).lean();
+        }
+        if (!pending) {
+            return salesDocs.map((s) => ({
+                ...s,
+                name: maskCustomerField(s.name) || s.name,
+                customerEmail: maskCustomerField(s.customerEmail),
+                alternateContactNo: maskCustomerField(s.alternateContactNo),
+                customerAddress: maskCustomerField(s.customerAddress),
+            }));
+        }
+        return salesDocs;
     }
     static async createSale(companyId, data, currentUserId, currentUserName) {
         if (data.leadId) {
@@ -463,16 +490,31 @@ class CompanySalesService {
     }
     static async searchCustomers(companyId, role, employeeId, q) {
         const search = (q || '').trim();
+        let sales = [];
         if (!search) {
             if (role === index_1.Roles.SALES && employeeId && mongoose_1.Types.ObjectId.isValid(employeeId)) {
-                return Sale_1.Sale.find({ companyId, salesEmployeeId: new mongoose_1.Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50);
+                sales = await Sale_1.Sale.find({ companyId, salesEmployeeId: new mongoose_1.Types.ObjectId(employeeId) }).sort({ createdAt: -1 }).limit(50).lean();
             }
-            return Sale_1.Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50);
+            else {
+                sales = await Sale_1.Sale.find({ companyId }).sort({ createdAt: -1 }).limit(50).lean();
+            }
         }
-        const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
-        if (!searchFilters.length)
-            return [];
-        return Sale_1.Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100);
+        else {
+            const searchFilters = CompanySalesService.buildCustomerSearchFilters(search);
+            if (!searchFilters.length)
+                return [];
+            sales = await Sale_1.Sale.find({ companyId, $or: searchFilters }).sort({ createdAt: -1 }).limit(100).lean();
+        }
+        const seen = new Set();
+        const uniqueCustomers = [];
+        for (const sale of sales) {
+            const key = (sale.customerId || String(sale._id)).toLowerCase().trim();
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueCustomers.push(sale);
+            }
+        }
+        return uniqueCustomers;
     }
     static async createUpgrade(companyId, data, currentUserId, currentUserName) {
         const customerId = data.customerId || (await (0, Counter_1.getNextCustomerId)(companyId));
@@ -559,7 +601,16 @@ class CompanySalesService {
         else if (andConditions.length > 1) {
             query.$and = andConditions;
         }
-        return Upgrade_1.Upgrade.find(query).sort({ createdAt: -1 });
+        const upgrades = await Upgrade_1.Upgrade.find(query).sort({ createdAt: -1 }).lean();
+        if (role !== index_1.Roles.COMPANY_ADMIN) {
+            return upgrades.map((u) => ({
+                ...u,
+                customerName: maskCustomerField(u.customerName) || u.customerName,
+                customerEmail: maskCustomerField(u.customerEmail),
+                mobile: maskCustomerField(u.mobile),
+            }));
+        }
+        return upgrades;
     }
     static async createVerification(companyId, data, currentUserId) {
         const currentBDate = (0, businessDate_1.getBusinessDateString)();
