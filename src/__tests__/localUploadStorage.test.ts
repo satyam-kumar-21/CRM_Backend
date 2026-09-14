@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const uploadRoot = path.resolve(__dirname, '../../uploads');
+const uploadRoot = path.resolve(process.cwd(), 'uploads');
 
 const filePath = path.join(uploadRoot, 'company-123', 'conversation-456', 'images', 'sample.txt');
 

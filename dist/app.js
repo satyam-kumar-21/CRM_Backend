@@ -12,6 +12,7 @@ const node_path_1 = __importDefault(require("node:path"));
 // import { apiRateLimiter } from './middlewares/rateLimiter';
 const errorMiddleware_1 = require("./middlewares/errorMiddleware");
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
+const aiAutomationRoutes_1 = __importDefault(require("./routes/aiAutomationRoutes"));
 const uploadRoot = node_path_1.default.resolve(process.cwd(), 'uploads');
 const app = (0, express_1.default)();
 app.set('etag', false);
@@ -39,6 +40,7 @@ app.use((0, cookie_parser_1.default)());
 app.use('/uploads', express_1.default.static(uploadRoot));
 // app.use('/api', apiRateLimiter);
 app.use('/api/v1/company', companyRoutes_1.default);
+app.use('/api/v1/ai', aiAutomationRoutes_1.default);
 // Health Check Endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date() });

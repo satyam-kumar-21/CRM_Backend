@@ -6,10 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const strict_1 = __importDefault(require("node:assert/strict"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
-const node_url_1 = require("node:url");
-const __filename = (0, node_url_1.fileURLToPath)(import.meta.url);
-const __dirname = node_path_1.default.dirname(__filename);
-const uploadRoot = node_path_1.default.resolve(__dirname, '../../uploads');
+const uploadRoot = node_path_1.default.resolve(process.cwd(), 'uploads');
 const filePath = node_path_1.default.join(uploadRoot, 'company-123', 'conversation-456', 'images', 'sample.txt');
 (async () => {
     node_fs_1.default.mkdirSync(node_path_1.default.dirname(filePath), { recursive: true });

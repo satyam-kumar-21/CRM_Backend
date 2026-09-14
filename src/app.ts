@@ -7,6 +7,7 @@ import path from 'node:path';
 // import { apiRateLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorMiddleware';
 import companyRoutes from './routes/companyRoutes';
+import aiAutomationRoutes from './routes/aiAutomationRoutes';
 
 const uploadRoot = path.resolve(process.cwd(), 'uploads');
 const app: Application = express();
@@ -41,6 +42,7 @@ app.use(cookieParser());
 app.use('/uploads', express.static(uploadRoot));
 // app.use('/api', apiRateLimiter);
 app.use('/api/v1/company', companyRoutes);
+app.use('/api/v1/ai', aiAutomationRoutes);
 
 // Health Check Endpoint
 app.get('/health', (req, res) => {
